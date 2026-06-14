@@ -7,8 +7,12 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const result = await db.execute(sql`select 1 as ok`);
-    const ok = Array.isArray(result) ? result[0]?.ok === 1 : false;
+    const result = (await db.execute(sql`select 1 as ok`)) as unknown as [
+      Array<{ ok: number }>,
+      unknown,
+    ];
+    const rows = result[0];
+    const ok = Array.isArray(rows) && rows[0]?.ok === 1;
     return NextResponse.json({
       ok: true,
       db: ok ? "reachable" : "unreachable",

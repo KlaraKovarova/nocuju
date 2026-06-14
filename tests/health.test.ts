@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/db/client", () => ({
   db: {
-    execute: vi.fn(async () => [{ ok: 1 }]),
+    execute: vi.fn(async () => [[{ ok: 1 }], []]),
   },
 }));
 
