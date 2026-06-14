@@ -49,20 +49,12 @@ See `.env.example`. The two we care about today:
 
 ## Deployment — GitHub → Hostinger
 
-The flow we're targeting:
+Target: **Hostinger Business / Cloud hosting** with the **Node.js app** feature.
+Continuous deploy is wired through hPanel's GitHub integration (auto-pull on
+push to `main`); GitHub Actions runs CI but does not push to Hostinger.
 
-1. **Source on GitHub.** `main` is the deployable branch. Feature work happens on PRs.
-2. **Hostinger MySQL.** Provision a MySQL database in hPanel; collect host, port, user, password, db name and put them in the server's environment as `DATABASE_URL`. Set `DATABASE_SSL=true` if connecting over the public network.
-3. **Hostinger Node.js app.** Deploy the Next.js app to a Hostinger plan that supports Node.js (VPS or Business/Cloud hosting with Node.js apps). Build command: `npm ci && npm run build`. Start command: `npm run start` (Next.js binds to `PORT`, which Hostinger injects).
-4. **Continuous deploy.** Connect the GitHub repo via Hostinger's Git integration (or push via SSH) so merges to `main` trigger a rebuild.
-
-### Open questions for the CEO
-
-- **Hostinger plan choice.** Shared hosting doesn't run long-lived Node processes; we need either:
-  - **Business / Cloud hosting** with the Node.js app feature (cheapest path, suitable for an MVP), or
-  - **VPS** (more control, slightly more ops, easy Docker later).
-  Both include MySQL. Recommendation pending board decision before provisioning — flagged on the issue, not provisioned yet.
-- **Driver/ORM.** Going with `mysql2` + Drizzle to stay aligned with the existing stack decision.
+Full runbook (provisioning checklist, env vars, build/start commands, smoke
+check, limits, rollback): [`docs/deploy/hostinger-business.md`](./docs/deploy/hostinger-business.md).
 
 ## Project layout
 
