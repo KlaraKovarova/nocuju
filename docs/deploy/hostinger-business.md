@@ -76,6 +76,13 @@ Notes:
   `localhost` and break the reverse proxy.
 - Do **not** add a `prebuild` step that talks to the DB. Hostinger's build phase
   runs without the live env in some plans; only the runtime has `DATABASE_URL`.
+- **`NODE_ENV=production` is set on the Node.js app, so `npm ci` skips
+  `devDependencies`.** Anything `next build` touches at compile time — currently
+  `@tailwindcss/postcss` and `tailwindcss` — must live under `dependencies` in
+  `package.json`, not `devDependencies`. CI happens to install everything (no
+  `NODE_ENV` set), so a missing prod-deps placement won't show up there. Verify
+  by running `NODE_ENV=production npm ci && npm run build` locally before
+  promoting a new build-time tool.
 
 ---
 
