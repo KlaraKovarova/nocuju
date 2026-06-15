@@ -7,6 +7,7 @@ import {
   locations,
   placeAmenities,
   placeCategories,
+  placeImages,
   places,
 } from "../src/db/schema";
 
@@ -236,7 +237,204 @@ const PLACE_SEED: ReadonlyArray<PlaceSeed> = [
     categorySlugs: ["nouzove-nocoviste"],
     amenitySlugs: ["oheniste"],
   },
+  {
+    slug: "utulna-zdarske-vrchy-devet-skal",
+    name: "Útulna Pod Devíti skalami",
+    description:
+      "Dřevěná útulna pod vrcholem Devíti skal v CHKO Žďárské vrchy. Kamna, prkenné palandy pro 6, studánka v dolíku pod cestou.",
+    city: "Sněžné",
+    region: "Kraj Vysočina",
+    lat: "49.6783",
+    lng: "16.0214",
+    elevationM: 820,
+    sleeps: 6,
+    surface: "drevena",
+    hasWc: false,
+    isFree: true,
+    source: "manual",
+    sourceUrl: "seed://utulna-devet-skal",
+    categorySlugs: ["utulna"],
+    amenitySlugs: ["kamna", "voda", "oheniste"],
+  },
+  {
+    slug: "utulna-pod-tisovym-vrchem-vysocina",
+    name: "Útulna Pod Tisovým vrchem",
+    description:
+      "Malá zděná útulna v lese nad obcí Polnička. Otevřená celoročně, hliněná podlaha, suchý záchod 30 m za útulnou.",
+    city: "Polnička",
+    region: "Kraj Vysočina",
+    lat: "49.6042",
+    lng: "15.9148",
+    elevationM: 640,
+    sleeps: 4,
+    surface: "hlinena",
+    hasWc: true,
+    isFree: true,
+    source: "manual",
+    sourceUrl: "seed://utulna-pod-tisovym-vrchem",
+    categorySlugs: ["utulna"],
+    amenitySlugs: ["wc", "oheniste"],
+  },
+  {
+    slug: "utulna-brdy-jordan",
+    name: "Útulna Pod Jordánem",
+    description:
+      "Dřevěná útulna v CHKO Brdy poblíž bývalého vojenského prostoru. Stůl, lavice, ohniště venku.",
+    city: "Strašice",
+    region: "Středočeský kraj",
+    lat: "49.7233",
+    lng: "13.7861",
+    elevationM: 712,
+    sleeps: 5,
+    surface: "drevena",
+    hasWc: false,
+    isFree: true,
+    source: "manual",
+    sourceUrl: "seed://utulna-brdy-jordan",
+    categorySlugs: ["utulna"],
+    amenitySlugs: ["oheniste", "stul"],
+  },
+  {
+    slug: "nocoviste-zelezne-hory-krizanky",
+    name: "Nouzové nocoviště Křižánky",
+    description:
+      "Otevřený přístřešek u rozcestí žluté a modré značky v Železných horách. Bez vybavení, suchá podlaha.",
+    city: "Seč",
+    region: "Pardubický kraj",
+    lat: "49.8512",
+    lng: "15.6603",
+    elevationM: 530,
+    sleeps: 3,
+    surface: "drevena",
+    hasWc: false,
+    isFree: true,
+    source: "manual",
+    sourceUrl: "seed://nocoviste-zelezne-hory-krizanky",
+    categorySlugs: ["nouzove-nocoviste"],
+    amenitySlugs: [],
+  },
+  {
+    slug: "utulna-hostynske-vrchy-troyer",
+    name: "Útulna Troyerova chata",
+    description:
+      "Dřevěná útulna na hřebeni Hostýnských vrchů u modré značky. Kamna, palandy pro 8, voda ve studánce 100 m pod chatou.",
+    city: "Rajnochovice",
+    region: "Zlínský kraj",
+    lat: "49.3789",
+    lng: "17.7521",
+    elevationM: 715,
+    sleeps: 8,
+    surface: "drevena",
+    hasWc: false,
+    isFree: true,
+    source: "manual",
+    sourceUrl: "seed://utulna-troyer",
+    categorySlugs: ["utulna"],
+    amenitySlugs: ["kamna", "voda", "oheniste", "stul"],
+  },
+  {
+    slug: "utulna-vsetinske-vrchy-cab",
+    name: "Útulna Cáb",
+    description:
+      "Smíšená útulna pod vrcholem Cábu ve Vsetínských vrších. Kamenné základy, dřevěné stěny, otevřené ohniště.",
+    city: "Velké Karlovice",
+    region: "Zlínský kraj",
+    lat: "49.3621",
+    lng: "18.2944",
+    elevationM: 841,
+    sleeps: 6,
+    surface: "mix",
+    hasWc: false,
+    isFree: true,
+    source: "manual",
+    sourceUrl: "seed://utulna-cab",
+    categorySlugs: ["utulna"],
+    amenitySlugs: ["oheniste"],
+  },
+  {
+    slug: "utulna-lysa-hora-beskydy",
+    name: "Útulna pod Lysou horou",
+    description:
+      "Nízká dřevěná útulna na sedle pod Lysou horou. Vhodná pro nouzové přespání 4 osob, kamna, suchá podestýlka.",
+    city: "Ostravice",
+    region: "Moravskoslezský kraj",
+    lat: "49.5468",
+    lng: "18.4472",
+    elevationM: 1024,
+    sleeps: 4,
+    surface: "drevena",
+    hasWc: false,
+    isFree: true,
+    source: "manual",
+    sourceUrl: "seed://utulna-pod-lysou",
+    categorySlugs: ["utulna"],
+    amenitySlugs: ["kamna", "oheniste"],
+  },
+  {
+    slug: "utulna-sumava-hrbenovka",
+    name: "Útulna Hřbenovka",
+    description:
+      "Dřevěná útulna v hřebenovém lese šumavské části Královského hvozdu. Palandy pro 5, kamna na dřevo, lavice, stůl.",
+    city: "Hartmanice",
+    region: "Plzeňský kraj",
+    lat: "49.1573",
+    lng: "13.4528",
+    elevationM: 1085,
+    sleeps: 5,
+    surface: "drevena",
+    hasWc: false,
+    isFree: true,
+    source: "manual",
+    sourceUrl: "seed://utulna-hrbenovka",
+    categorySlugs: ["utulna"],
+    amenitySlugs: ["kamna", "stul", "oheniste"],
+  },
+  {
+    slug: "utulna-novohradky-malovicky",
+    name: "Útulna U Malovického potoka",
+    description:
+      "Malá kamenná útulna nad údolím Malovického potoka v Novohradských horách. Hliněná podlaha, otevřené ohniště.",
+    city: "Benešov nad Černou",
+    region: "Jihočeský kraj",
+    lat: "48.7355",
+    lng: "14.6122",
+    elevationM: 740,
+    sleeps: 4,
+    surface: "kamenna",
+    hasWc: false,
+    isFree: true,
+    source: "manual",
+    sourceUrl: "seed://utulna-malovicky",
+    categorySlugs: ["utulna"],
+    amenitySlugs: ["oheniste", "voda"],
+  },
+  {
+    slug: "nocoviste-orlicke-podhuri-zampach",
+    name: "Nouzové nocoviště Žampach",
+    description:
+      "Otevřený dřevěný altán nad obcí Žampach v Orlickém podhůří. Stůl, dvě lavice, ohniště venku.",
+    city: "Žampach",
+    region: "Pardubický kraj",
+    lat: "50.0294",
+    lng: "16.5481",
+    elevationM: 410,
+    sleeps: 4,
+    surface: "drevena",
+    hasWc: false,
+    isFree: true,
+    source: "manual",
+    sourceUrl: "seed://nocoviste-zampach",
+    categorySlugs: ["nouzove-nocoviste"],
+    amenitySlugs: ["oheniste", "stul"],
+  },
 ];
+
+function imageSeedsFor(slug: string, count: number): Array<{ url: string; alt: string }> {
+  return Array.from({ length: count }, (_, i) => ({
+    url: `https://picsum.photos/seed/${slug}-${i + 1}/1200/800`,
+    alt: `${slug} – placeholder photo ${i + 1}`,
+  }));
+}
 
 async function upsertCategory(slug: string, name: string): Promise<number> {
   const existing = await db
@@ -347,6 +545,24 @@ async function upsertPlace(
   return { id, created: true };
 }
 
+async function syncPlaceImages(placeId: number, slug: string): Promise<number> {
+  const existing = await db
+    .select({ id: placeImages.id })
+    .from(placeImages)
+    .where(eq(placeImages.placeId, placeId));
+  if (existing.length > 0) return 0;
+  const photos = imageSeedsFor(slug, 2);
+  for (const [i, photo] of photos.entries()) {
+    await db.insert(placeImages).values({
+      placeId,
+      url: photo.url,
+      alt: photo.alt,
+      sortOrder: i,
+    });
+  }
+  return photos.length;
+}
+
 async function main() {
   const categoryIdBySlug = new Map<string, number>();
   for (const { slug, name } of CATEGORY_SEED) {
@@ -362,6 +578,7 @@ async function main() {
 
   let created = 0;
   let updated = 0;
+  let photosAdded = 0;
   for (const seed of PLACE_SEED) {
     const locationId = await upsertLocation(seed.city, seed.region);
     const result = await upsertPlace(
@@ -372,6 +589,7 @@ async function main() {
     );
     if (result.created) created += 1;
     else updated += 1;
+    photosAdded += await syncPlaceImages(result.id, seed.slug);
   }
 
   const [{ count }] = (await db
@@ -379,7 +597,7 @@ async function main() {
     .from(places)) as Array<{ count: number }>;
 
   console.log(
-    `seed: ${created} created, ${updated} updated, ${PLACE_SEED.length} total seeded`,
+    `seed: ${created} created, ${updated} updated, ${PLACE_SEED.length} total seeded, ${photosAdded} photos inserted`,
   );
   console.log(`places in DB after seed: ${count}`);
 }

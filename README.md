@@ -18,10 +18,13 @@ cp .env.example .env.local
 # 3. create the dev database (one-time)
 mysql -uroot -e "create database noc_dev;"
 
-# 4. push schema (no migrations yet — schema is a placeholder)
+# 4. push schema to an empty DB
 npm run db:push
 
-# 5. dev server
+# 5. seed ~20 places (idempotent, safe to re-run)
+npm run seed
+
+# 6. dev server
 npm run dev
 ```
 
@@ -39,6 +42,7 @@ Health check: `GET http://localhost:3000/api/health` → `{ "ok": true, "db": "r
 | `npm run test`     | Vitest                                |
 | `npm run db:push`  | Apply schema directly (dev only)      |
 | `npm run db:generate` | Generate SQL migrations            |
+| `npm run seed`     | Insert/update ~20 Czech utulny + placeholder photos |
 
 ## Environment variables
 
@@ -64,7 +68,26 @@ src/
     api/health/route.ts
   db/
     client.ts          # Drizzle + mysql2 pool
-    schema.ts          # tables land here (NOC-3)
+    schema.ts          # domain tables
 tests/                 # Vitest
 drizzle.config.ts
 ```
+
+## Data model
+
+The product is a directory of **free Czech mountain shelters** (utulny / nouzová
+nocoviště), not paid accommodations — so there are no `price_per_night_czk` or
+`contact_email/phone` fields. Instead each place carries `is_free` (always true
+for now), `sleeps` (capacity), `surface`, and `has_wc`. Region lives on
+`locations`, not its own table — every place rolls up through `location_id`.
+
+```
+places                 ── locations (city, region, country)
+  ├─ place_categories ── categories  (utulna, nouzove-nocoviste)
+  ├─ place_amenities  ── amenities   (wc, voda, oheniste, stul, kamna)
+  └─ place_images     (url, alt, sort_order)
+```
+
+Source of truth: [`src/db/schema.ts`](./src/db/schema.ts).
+Seed: [`scripts/seed.ts`](./scripts/seed.ts) — ~20 entries across 10+ kraje,
+each with 2 placeholder photos from `picsum.photos`.
