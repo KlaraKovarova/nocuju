@@ -1,8 +1,12 @@
 import { drizzle, type MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 
+import { schema } from "./schema";
+
+type Schema = typeof schema;
+
 let pool: mysql.Pool | null = null;
-let dbInstance: MySql2Database<Record<string, never>> | null = null;
+let dbInstance: MySql2Database<Schema> | null = null;
 
 function getPool(): mysql.Pool {
   if (pool) return pool;
@@ -20,13 +24,13 @@ function getPool(): mysql.Pool {
   return pool;
 }
 
-function getDb(): MySql2Database<Record<string, never>> {
+function getDb(): MySql2Database<Schema> {
   if (dbInstance) return dbInstance;
-  dbInstance = drizzle(getPool(), { mode: "default" });
+  dbInstance = drizzle(getPool(), { schema, mode: "default" });
   return dbInstance;
 }
 
-export const db = new Proxy({} as MySql2Database<Record<string, never>>, {
+export const db = new Proxy({} as MySql2Database<Schema>, {
   get(_target, prop, receiver) {
     return Reflect.get(getDb() as object, prop, receiver);
   },
