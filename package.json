@@ -11,9 +11,12 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "seed": "node --env-file=.env.local --import tsx scripts/seed.ts"
+    "seed": "node --env-file=.env.local --import tsx scripts/seed.ts",
+    "crawl:boudy": "node --env-file=.env.local --import tsx scripts/crawl-boudy-info.ts",
+    "crawl:viaczechia": "node --env-file=.env.local --import tsx scripts/crawl-viaczechia.ts"
   },
   "dependencies": {
+    "cheerio": "^1.2.0",
     "drizzle-orm": "^0.45.2",
     "leaflet": "^1.9.4",
     "mysql2": "^3.22.5",
