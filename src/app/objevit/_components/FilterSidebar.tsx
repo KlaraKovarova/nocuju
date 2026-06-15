@@ -6,18 +6,22 @@ type Props = {
   filters: ParsedFilters;
   categoryOptions: FilterOption[];
   surfaceOptions: FilterOption[];
+  action?: string;
+  resetHref?: string;
 };
 
 export function FilterSidebar({
   filters,
   categoryOptions,
   surfaceOptions,
+  action = "/objevit",
+  resetHref = "/objevit",
 }: Props) {
   return (
     <aside className="w-full shrink-0 lg:w-72">
       <form
         method="GET"
-        action="/objevit"
+        action={action}
         className="flex flex-col gap-6 rounded-lg border border-zinc-200 bg-white p-5"
       >
         <div>
@@ -113,7 +117,7 @@ export function FilterSidebar({
             Filtrovat
           </button>
           <a
-            href="/objevit"
+            href={resetHref}
             className="rounded border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
           >
             Zrušit
