@@ -39,7 +39,7 @@ export function PlaceCard({ data }: { data: PlaceCardData }) {
   const { place, city, region, categorySlugs, imageUrl } = data;
   return (
     <Link
-      href={`/utulny/${place.slug}`}
+      href={`/misto/${place.slug}`}
       className="group flex flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white transition hover:border-emerald-500 hover:shadow-md"
     >
       {imageUrl ? (
