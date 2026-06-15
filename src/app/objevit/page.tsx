@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, like, or, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import {
@@ -8,6 +8,8 @@ import {
   placeImages,
   places,
 } from "@/db/schema";
+
+import { SearchInput } from "@/components/SearchInput";
 
 import { FilterSidebar, type FilterOption } from "./_components/FilterSidebar";
 import { Pagination } from "./_components/Pagination";
@@ -28,6 +30,10 @@ const SURFACE_OPTIONS: FilterOption[] = [
 ];
 
 type SurfaceValue = (typeof places.surface.enumValues)[number];
+
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => "\\" + c);
+}
 
 function whereClause(filters: ParsedFilters) {
   const conditions = [] as ReturnType<typeof eq>[];
@@ -56,6 +62,19 @@ function whereClause(filters: ParsedFilters) {
       .from(locations)
       .where(eq(locations.region, filters.region));
     conditions.push(inArray(places.locationId, subquery));
+  }
+  if (filters.q) {
+    const needle = `%${escapeLike(filters.q)}%`;
+    const regionSubquery = db
+      .select({ id: locations.id })
+      .from(locations)
+      .where(like(locations.region, needle));
+    const qCondition = or(
+      like(places.name, needle),
+      like(places.description, needle),
+      inArray(places.locationId, regionSubquery),
+    );
+    if (qCondition) conditions.push(qCondition);
   }
 
   return conditions.length ? and(...conditions) : undefined;
@@ -183,13 +202,20 @@ export default async function ObjevitPage({
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-8 lg:px-8">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold text-zinc-900">Objevit místa</h1>
-        <p className="mt-2 text-zinc-600">
-          {total === 0
-            ? "Žádná místa neodpovídají filtru."
-            : `${total} ${pluralizeMista(total)} k přespání.`}
-        </p>
+      <header className="mb-6">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-zinc-900">Objevit místa</h1>
+            <p className="mt-2 text-zinc-600">
+              {total === 0
+                ? "Žádná místa neodpovídají hledání."
+                : `${total} ${pluralizeMista(total)} k přespání.`}
+            </p>
+          </div>
+          <div className="lg:w-96">
+            <SearchInput initialValue={filters.q ?? ""} basePath="/objevit" />
+          </div>
+        </div>
       </header>
 
       <div className="flex flex-col gap-8 lg:flex-row">

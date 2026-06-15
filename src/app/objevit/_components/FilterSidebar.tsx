@@ -26,6 +26,9 @@ export function FilterSidebar({
         action={action}
         className="flex flex-col gap-6 rounded-lg border border-zinc-200 bg-white p-5"
       >
+        {filters.q && (
+          <input type="hidden" name="q" value={filters.q} />
+        )}
         {regionOptions && regionOptions.length > 0 && (
           <div>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-700">

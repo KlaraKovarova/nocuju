@@ -11,6 +11,8 @@ export type MapaMarker = {
   slug: string;
   name: string;
   city: string | null;
+  region: string | null;
+  isFree: boolean;
   lat: number;
   lng: number;
   category: MapaCategory | null;
@@ -65,19 +67,32 @@ export default function MapaCanvas({ center, zoom, markers }: MapaCanvasProps) {
       />
       {markers.map((m) => {
         const icon = m.category ? ICONS[m.category] : ICONS.default;
+        const locationLine = [m.city, m.region].filter(Boolean).join(", ");
         return (
           <Marker key={m.id} position={[m.lat, m.lng]} icon={icon}>
             <Popup>
-              <div className="text-sm leading-snug">
+              <div className="min-w-[180px] text-sm leading-snug">
+                <div className="font-semibold text-zinc-900">{m.name}</div>
+                {locationLine && (
+                  <div className="mt-0.5 text-zinc-600">{locationLine}</div>
+                )}
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <span
+                    className={
+                      m.isFree
+                        ? "inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
+                        : "inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                    }
+                  >
+                    {m.isFree ? "Zdarma" : "Placené"}
+                  </span>
+                </div>
                 <a
                   href={`/misto/${m.slug}`}
-                  className="font-semibold text-emerald-700 hover:underline"
+                  className="mt-2 inline-block font-medium text-emerald-700 hover:underline"
                 >
-                  {m.name}
+                  Otevřít detail →
                 </a>
-                {m.city && (
-                  <div className="mt-0.5 text-zinc-600">{m.city}</div>
-                )}
               </div>
             </Popup>
           </Marker>

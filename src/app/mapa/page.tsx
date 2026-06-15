@@ -1,10 +1,11 @@
-import { and, asc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, like, or } from "drizzle-orm";
 
 import {
   FilterSidebar,
   type FilterOption,
 } from "@/app/objevit/_components/FilterSidebar";
 import { parseFilters, type ParsedFilters } from "@/app/objevit/filters";
+import { SearchInput } from "@/components/SearchInput";
 import { db } from "@/db/client";
 import {
   categories,
@@ -34,6 +35,10 @@ const CR_ZOOM = 7;
 type SurfaceValue = (typeof places.surface.enumValues)[number];
 type CategorySlug = "utulna" | "nouzove-nocoviste";
 
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => "\\" + c);
+}
+
 function whereClause(filters: ParsedFilters) {
   const conditions = [] as ReturnType<typeof eq>[];
 
@@ -55,6 +60,26 @@ function whereClause(filters: ParsedFilters) {
       .where(inArray(categories.slug, filters.categories));
     conditions.push(inArray(places.id, subquery));
   }
+  if (filters.region) {
+    const subquery = db
+      .select({ id: locations.id })
+      .from(locations)
+      .where(eq(locations.region, filters.region));
+    conditions.push(inArray(places.locationId, subquery));
+  }
+  if (filters.q) {
+    const needle = `%${escapeLike(filters.q)}%`;
+    const regionSubquery = db
+      .select({ id: locations.id })
+      .from(locations)
+      .where(like(locations.region, needle));
+    const qCondition = or(
+      like(places.name, needle),
+      like(places.description, needle),
+      inArray(places.locationId, regionSubquery),
+    );
+    if (qCondition) conditions.push(qCondition);
+  }
 
   return conditions.length ? and(...conditions) : undefined;
 }
@@ -69,7 +94,9 @@ async function loadMarkers(filters: ParsedFilters): Promise<MapaMarker[]> {
       name: places.name,
       lat: places.lat,
       lng: places.lng,
+      isFree: places.isFree,
       city: locations.city,
+      region: locations.region,
     })
     .from(places)
     .leftJoin(locations, eq(places.locationId, locations.id))
@@ -112,6 +139,8 @@ async function loadMarkers(filters: ParsedFilters): Promise<MapaMarker[]> {
       slug: row.slug,
       name: row.name,
       city: row.city ?? null,
+      region: row.region ?? null,
+      isFree: Boolean(row.isFree),
       lat,
       lng,
       category,
@@ -137,12 +166,19 @@ export default async function MapaPage({
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-8 lg:px-8">
       <header className="mb-6">
-        <h1 className="text-3xl font-bold text-zinc-900">Mapa míst</h1>
-        <p className="mt-2 text-zinc-600">
-          {markers.length === 0
-            ? "Žádná místa neodpovídají filtru."
-            : `${markers.length} ${pluralizeMista(markers.length)} na mapě.`}
-        </p>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-zinc-900">Mapa míst</h1>
+            <p className="mt-2 text-zinc-600">
+              {markers.length === 0
+                ? "Žádná místa neodpovídají hledání."
+                : `${markers.length} ${pluralizeMista(markers.length)} na mapě.`}
+            </p>
+          </div>
+          <div className="lg:w-96">
+            <SearchInput initialValue={filters.q ?? ""} basePath="/mapa" />
+          </div>
+        </div>
       </header>
 
       <div className="flex flex-col gap-6 lg:flex-row">
