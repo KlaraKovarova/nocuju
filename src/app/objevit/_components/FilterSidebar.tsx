@@ -6,6 +6,7 @@ type Props = {
   filters: ParsedFilters;
   categoryOptions: FilterOption[];
   surfaceOptions: FilterOption[];
+  regionOptions?: FilterOption[];
   action?: string;
   resetHref?: string;
 };
@@ -14,6 +15,7 @@ export function FilterSidebar({
   filters,
   categoryOptions,
   surfaceOptions,
+  regionOptions,
   action = "/objevit",
   resetHref = "/objevit",
 }: Props) {
@@ -24,6 +26,27 @@ export function FilterSidebar({
         action={action}
         className="flex flex-col gap-6 rounded-lg border border-zinc-200 bg-white p-5"
       >
+        {regionOptions && regionOptions.length > 0 && (
+          <div>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-700">
+              Oblast
+            </h2>
+            <select
+              name="kraj"
+              defaultValue={filters.region ?? ""}
+              className="w-full rounded border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            >
+              <option value="">Všechny oblasti</option>
+              {regionOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                  {typeof opt.count === "number" ? ` (${opt.count})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-700">
             Kategorie

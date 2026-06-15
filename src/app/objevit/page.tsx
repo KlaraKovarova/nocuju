@@ -50,8 +50,27 @@ function whereClause(filters: ParsedFilters) {
       .where(inArray(categories.slug, filters.categories));
     conditions.push(inArray(places.id, subquery));
   }
+  if (filters.region) {
+    const subquery = db
+      .select({ id: locations.id })
+      .from(locations)
+      .where(eq(locations.region, filters.region));
+    conditions.push(inArray(places.locationId, subquery));
+  }
 
   return conditions.length ? and(...conditions) : undefined;
+}
+
+async function loadRegionOptions(): Promise<FilterOption[]> {
+  const rows = await db
+    .selectDistinct({ region: locations.region })
+    .from(locations)
+    .innerJoin(places, eq(places.locationId, locations.id))
+    .orderBy(asc(locations.region));
+  return rows
+    .map((r) => r.region)
+    .filter((r): r is string => Boolean(r && r.trim()))
+    .map((r) => ({ value: r, label: r }));
 }
 
 async function loadPlaces(filters: ParsedFilters): Promise<{
@@ -156,7 +175,10 @@ export default async function ObjevitPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const filters = parseFilters(await searchParams);
-  const { cards, total } = await loadPlaces(filters);
+  const [{ cards, total }, regionOptions] = await Promise.all([
+    loadPlaces(filters),
+    loadRegionOptions(),
+  ]);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
@@ -175,6 +197,7 @@ export default async function ObjevitPage({
           filters={filters}
           categoryOptions={CATEGORY_OPTIONS}
           surfaceOptions={SURFACE_OPTIONS}
+          regionOptions={regionOptions}
         />
 
         <section className="flex-1">

@@ -5,6 +5,7 @@ export type ParsedFilters = {
   surfaces: string[];
   wc: "yes" | "no" | null;
   sleepsMin: number | null;
+  region: string | null;
   page: number;
 };
 
@@ -52,7 +53,12 @@ export function parseFilters(searchParams: {
   const page =
     Number.isFinite(pageParsed) && pageParsed > 0 ? pageParsed : 1;
 
-  return { categories, surfaces, wc, sleepsMin, page };
+  const regionRaw = Array.isArray(searchParams.kraj)
+    ? searchParams.kraj[0]
+    : searchParams.kraj;
+  const region = regionRaw && regionRaw.trim() ? regionRaw.trim() : null;
+
+  return { categories, surfaces, wc, sleepsMin, region, page };
 }
 
 export function buildPageHref(filters: ParsedFilters, page: number): string {
@@ -61,6 +67,7 @@ export function buildPageHref(filters: ParsedFilters, page: number): string {
   for (const s of filters.surfaces) sp.append("povrch", s);
   if (filters.wc) sp.set("wc", filters.wc);
   if (filters.sleepsMin) sp.set("sleeps_min", String(filters.sleepsMin));
+  if (filters.region) sp.set("kraj", filters.region);
   if (page > 1) sp.set("stranka", String(page));
   const qs = sp.toString();
   return qs ? `/objevit?${qs}` : "/objevit";
