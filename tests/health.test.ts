@@ -12,6 +12,11 @@ describe("GET /api/health", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ ok: true, db: "reachable" });
+    expect(body.ok).toBe(true);
+    expect(body.db).toBe("reachable");
+    expect(body.config).toEqual({
+      hasDatabaseUrl: expect.any(Boolean),
+      ssl: expect.any(Boolean),
+    });
   });
 });
