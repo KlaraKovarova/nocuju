@@ -9,10 +9,11 @@ function makeReq(url: string, headers: Record<string, string> = {}): NextRequest
 }
 
 describe("apex → www redirect middleware", () => {
-  it("301-redirects apex root to www", () => {
+  it("301-redirects apex root to www and is uncacheable", () => {
     const res = middleware(makeReq("https://nocuju.cz/", { host: "nocuju.cz" }));
     expect(res.status).toBe(301);
     expect(res.headers.get("location")).toBe("https://www.nocuju.cz/");
+    expect(res.headers.get("cache-control")).toBe("no-store");
   });
 
   it("preserves path and query when redirecting", () => {

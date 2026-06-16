@@ -23,7 +23,9 @@ export function middleware(req: NextRequest) {
   target.host = CANONICAL_HOST;
   target.port = "";
 
-  return NextResponse.redirect(target, 301);
+  const res = NextResponse.redirect(target, 301);
+  res.headers.set("Cache-Control", "no-store");
+  return res;
 }
 
 export const config = {
