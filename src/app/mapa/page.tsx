@@ -14,7 +14,8 @@ import {
   places,
 } from "@/db/schema";
 
-import { MapaView, type MapaMarker } from "./_components/MapaView";
+import { MapaWithSavedFilter } from "./_components/MapaWithSavedFilter";
+import { type MapaMarker } from "./_components/MapaView";
 
 const CATEGORY_OPTIONS: FilterOption[] = [
   { value: "utulna", label: "Útulna" },
@@ -191,9 +192,11 @@ export default async function MapaPage({
         />
 
         <section className="flex-1">
-          <div className="h-[70vh] min-h-[480px] overflow-hidden rounded-lg border border-zinc-200 bg-white">
-            <MapaView center={CR_CENTER} zoom={CR_ZOOM} markers={markers} />
-          </div>
+          <MapaWithSavedFilter
+            center={CR_CENTER}
+            zoom={CR_ZOOM}
+            markers={markers}
+          />
 
           <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-zinc-600">
             <span className="inline-flex items-center gap-1.5">

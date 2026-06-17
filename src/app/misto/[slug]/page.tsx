@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 
 import { MiniMap } from "@/components/MiniMap";
+import { SaveToggle } from "@/components/SaveToggle";
 import { ReportForm } from "./_components/ReportForm";
 import { db } from "@/db/client";
 import {
@@ -300,12 +301,17 @@ export default async function MistoDetailPage({
         )}
 
         <div className="p-6 sm:p-8">
-          <h1 className="text-3xl font-bold text-zinc-900 sm:text-4xl">
-            {place.name}
-          </h1>
-          {subtitle && (
-            <p className="mt-2 text-lg text-zinc-600">{subtitle}</p>
-          )}
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-zinc-900 sm:text-4xl">
+                {place.name}
+              </h1>
+              {subtitle && (
+                <p className="mt-2 text-lg text-zinc-600">{subtitle}</p>
+              )}
+            </div>
+            <SaveToggle slug={place.slug} variant="detail" />
+          </div>
 
           <div className="mt-6 flex flex-wrap gap-2">
             {categorySlugs.map((slug) => (

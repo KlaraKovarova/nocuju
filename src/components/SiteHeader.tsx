@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { SavedPlacesNavLink } from "./SavedPlacesNavLink";
+
 const NAV_ITEMS = [
   { href: "/objevit", label: "Objevit" },
   { href: "/mapa", label: "Mapa" },
@@ -32,6 +34,9 @@ export function SiteHeader() {
                 </Link>
               </li>
             ))}
+            <li>
+              <SavedPlacesNavLink />
+            </li>
           </ul>
         </nav>
       </div>

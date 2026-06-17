@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { SaveToggle } from "@/components/SaveToggle";
 import type { Place } from "@/db/schema";
 
 export type PlaceCardData = {
@@ -40,17 +41,22 @@ export function PlaceCard({ data }: { data: PlaceCardData }) {
   return (
     <Link
       href={`/misto/${place.slug}`}
-      className="group flex flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white transition hover:border-emerald-500 hover:shadow-md"
+      className="group relative flex flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white transition hover:border-emerald-500 hover:shadow-md"
     >
-      {imageUrl ? (
-        <img
-          src={imageUrl}
-          alt={place.name}
-          className="h-40 w-full object-cover"
-        />
-      ) : (
-        <PlaceholderImage name={place.name} />
-      )}
+      <div className="relative">
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={place.name}
+            className="h-40 w-full object-cover"
+          />
+        ) : (
+          <PlaceholderImage name={place.name} />
+        )}
+        <div className="absolute right-2 top-2">
+          <SaveToggle slug={place.slug} />
+        </div>
+      </div>
       <div className="flex flex-1 flex-col gap-2 p-4">
         <h3 className="text-lg font-semibold text-zinc-900 group-hover:text-emerald-700">
           {place.name}
