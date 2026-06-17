@@ -1,6 +1,13 @@
+import Link from "next/link";
+
 import type { ParsedFilters } from "../filters";
 
-export type FilterOption = { value: string; label: string; count?: number };
+export type FilterOption = {
+  value: string;
+  label: string;
+  count?: number;
+  href?: string;
+};
 
 type Props = {
   filters: ParsedFilters;
@@ -47,6 +54,22 @@ export function FilterSidebar({
                 </option>
               ))}
             </select>
+            {regionOptions.some((opt) => opt.href) && (
+              <ul className="mt-3 flex flex-wrap gap-1.5 text-xs">
+                {regionOptions
+                  .filter((opt) => opt.href)
+                  .map((opt) => (
+                    <li key={opt.value}>
+                      <Link
+                        href={opt.href!}
+                        className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-zinc-600 hover:border-emerald-500 hover:text-emerald-700"
+                      >
+                        {opt.label}
+                      </Link>
+                    </li>
+                  ))}
+              </ul>
+            )}
           </div>
         )}
 

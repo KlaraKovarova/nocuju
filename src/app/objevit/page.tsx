@@ -8,6 +8,7 @@ import {
   placeImages,
   places,
 } from "@/db/schema";
+import { loadRegionRows } from "@/lib/regions";
 
 import { SearchInput } from "@/components/SearchInput";
 
@@ -81,15 +82,13 @@ function whereClause(filters: ParsedFilters) {
 }
 
 async function loadRegionOptions(): Promise<FilterOption[]> {
-  const rows = await db
-    .selectDistinct({ region: locations.region })
-    .from(locations)
-    .innerJoin(places, eq(places.locationId, locations.id))
-    .orderBy(asc(locations.region));
-  return rows
-    .map((r) => r.region)
-    .filter((r): r is string => Boolean(r && r.trim()))
-    .map((r) => ({ value: r, label: r }));
+  const rows = await loadRegionRows();
+  return rows.map((r) => ({
+    value: r.name,
+    label: r.name,
+    count: r.count,
+    href: `/oblast/${r.slug}`,
+  }));
 }
 
 async function loadPlaces(filters: ParsedFilters): Promise<{

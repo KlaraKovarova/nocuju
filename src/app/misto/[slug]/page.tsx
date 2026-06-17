@@ -15,6 +15,8 @@ import {
   placeImages,
   places,
 } from "@/db/schema";
+import { slugifyRegion } from "@/lib/regions";
+import { getSiteUrl } from "@/lib/site-url";
 
 const CATEGORY_LABEL: Record<string, string> = {
   utulna: "Útulna",
@@ -113,12 +115,80 @@ export async function generateMetadata({
   return {
     title: `${place.name} — NOC`,
     description,
+    alternates: { canonical: `/misto/${place.slug}` },
     openGraph: {
       title: place.name,
       description,
       type: "article",
     },
   };
+}
+
+function buildPlaceJsonLd({
+  place,
+  location,
+  categorySlugs,
+  amenityLabels,
+  images,
+}: DetailData): Record<string, unknown> {
+  const baseUrl = getSiteUrl();
+  const lat = Number(place.lat);
+  const lng = Number(place.lng);
+  const isEmergency = categorySlugs.includes("nouzove-nocoviste");
+  const types = isEmergency
+    ? ["Campground", "EmergencyService"]
+    : ["Campground", "LodgingBusiness"];
+
+  const data: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": types.length === 1 ? types[0] : types,
+    name: place.name,
+    url: `${baseUrl}/misto/${place.slug}`,
+    description: place.description
+      ? place.description.replace(/\s+/g, " ").slice(0, 600)
+      : undefined,
+    geo: {
+      "@type": "GeoCoordinates",
+      latitude: lat,
+      longitude: lng,
+    },
+    address: {
+      "@type": "PostalAddress",
+      addressCountry: location?.country ?? "CZ",
+      addressLocality: location?.city ?? undefined,
+      addressRegion: location?.region ?? undefined,
+    },
+    isAccessibleForFree: Boolean(place.isFree),
+    publicAccess: true,
+    amenityFeature: amenityLabels.map((label) => ({
+      "@type": "LocationFeatureSpecification",
+      name: label,
+      value: true,
+    })),
+    image: images.map((img) => img.url),
+  };
+
+  if (place.elevationM != null) {
+    (data.geo as Record<string, unknown>).elevation = `${place.elevationM} m`;
+  }
+  if (place.sleeps != null) {
+    data.maximumAttendeeCapacity = place.sleeps;
+  }
+  if (location?.region) {
+    data.areaServed = {
+      "@type": "AdministrativeArea",
+      name: location.region,
+      url: `${baseUrl}/oblast/${slugifyRegion(location.region)}`,
+    };
+  }
+
+  return Object.fromEntries(
+    Object.entries(data).filter(([, v]) => {
+      if (v === undefined) return false;
+      if (Array.isArray(v) && v.length === 0) return false;
+      return true;
+    }),
+  );
 }
 
 function HeroPlaceholder({ name, category }: { name: string; category: string | null }) {
@@ -175,9 +245,15 @@ export default async function MistoDetailPage({
   const subtitle = [location?.city, location?.region].filter(Boolean).join(", ");
   const mapyUrl = `https://mapy.cz/?source=coor&id=${lng},${lat}`;
   const sourceLabel = SOURCE_LABEL[place.source] ?? place.source;
+  const regionSlug = location?.region ? slugifyRegion(location.region) : null;
+  const jsonLd = buildPlaceJsonLd(data);
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8 lg:px-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <nav className="mb-6 text-sm">
         <Link
           href="/objevit"
@@ -185,6 +261,17 @@ export default async function MistoDetailPage({
         >
           ← Zpět na seznam
         </Link>
+        {regionSlug && location?.region && (
+          <>
+            <span className="mx-2 text-zinc-400" aria-hidden>·</span>
+            <Link
+              href={`/oblast/${regionSlug}`}
+              className="text-emerald-700 hover:text-emerald-800 hover:underline"
+            >
+              {location.region}
+            </Link>
+          </>
+        )}
       </nav>
 
       <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
