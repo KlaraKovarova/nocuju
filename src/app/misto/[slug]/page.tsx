@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 
 import { MiniMap } from "@/components/MiniMap";
+import { ReportForm } from "./_components/ReportForm";
 import { db } from "@/db/client";
 import {
   amenities,
@@ -230,12 +231,25 @@ function Chip({
 
 export default async function MistoDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { slug } = await params;
+  const sp = await searchParams;
   const data = await loadPlace(slug);
   if (!data) notFound();
+
+  const reportSent = sp.reportSent === "1";
+  const reportErrorRaw = Array.isArray(sp.reportError)
+    ? sp.reportError[0]
+    : sp.reportError;
+  const reportStatus: "idle" | "sent" | "error" = reportSent
+    ? "sent"
+    : reportErrorRaw
+      ? "error"
+      : "idle";
 
   const { place, location, categorySlugs, amenityLabels, images } = data;
   const heroImage = images[0];
@@ -366,6 +380,13 @@ export default async function MistoDetailPage({
               </a>
             </p>
           </section>
+
+          <ReportForm
+            placeId={Number(place.id)}
+            slug={place.slug}
+            status={reportStatus}
+            errorMessage={reportErrorRaw ?? null}
+          />
 
           <footer className="mt-10 border-t border-zinc-200 pt-4 text-sm text-zinc-500">
             Zdroj:{" "}

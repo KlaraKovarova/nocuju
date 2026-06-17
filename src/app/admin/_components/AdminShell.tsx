@@ -30,6 +30,12 @@ export function AdminShell({
                 Místa
               </Link>
               <Link
+                href="/admin/reports"
+                className="text-zinc-600 hover:text-zinc-900"
+              >
+                Hlášení
+              </Link>
+              <Link
                 href="/"
                 target="_blank"
                 rel="noopener noreferrer"

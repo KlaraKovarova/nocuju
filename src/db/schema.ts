@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   int,
   mysqlEnum,
   mysqlTable,
@@ -13,6 +14,13 @@ import {
 
 export const surfaceEnum = ["kamenna", "drevena", "hlinena", "trava", "mix"] as const;
 export const sourceEnum = ["boudy.info", "viaczechia", "manual"] as const;
+export const reportCategoryEnum = [
+  "info-nesedi",
+  "nema-ho-tam",
+  "nebezpecne",
+  "jine",
+] as const;
+export const reportStatusEnum = ["new", "triaged", "resolved", "dismissed"] as const;
 
 export const locations = mysqlTable("locations", {
   id: serial("id").primaryKey(),
@@ -94,6 +102,26 @@ export const placeImages = mysqlTable("place_images", {
   sortOrder: int("sort_order").notNull().default(0),
 });
 
+export const placeReports = mysqlTable(
+  "place_reports",
+  {
+    id: serial("id").primaryKey(),
+    placeId: int("place_id").notNull(),
+    category: mysqlEnum("category", reportCategoryEnum).notNull(),
+    note: varchar("note", { length: 500 }),
+    contactEmail: varchar("contact_email", { length: 254 }),
+    sourceIpHash: varchar("source_ip_hash", { length: 64 }),
+    status: mysqlEnum("status", reportStatusEnum).notNull().default("new"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [
+    index("place_reports_place_idx").on(table.placeId),
+    index("place_reports_status_idx").on(table.status),
+    index("place_reports_ip_created_idx").on(table.sourceIpHash, table.createdAt),
+  ],
+);
+
 export const schema = {
   locations,
   categories,
@@ -102,6 +130,7 @@ export const schema = {
   placeCategories,
   placeAmenities,
   placeImages,
+  placeReports,
 };
 
 export type Place = typeof places.$inferSelect;
@@ -110,3 +139,5 @@ export type Category = typeof categories.$inferSelect;
 export type Amenity = typeof amenities.$inferSelect;
 export type Location = typeof locations.$inferSelect;
 export type PlaceImage = typeof placeImages.$inferSelect;
+export type PlaceReport = typeof placeReports.$inferSelect;
+export type NewPlaceReport = typeof placeReports.$inferInsert;
