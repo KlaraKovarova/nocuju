@@ -1,7 +1,14 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
 import { ADMIN_COOKIE } from "@/lib/admin-auth";
+import {
+  ANALYTICS_COOKIE,
+  ANALYTICS_COOKIE_MAX_AGE,
+  newSessionId,
+  recordPageview,
+  shouldTrackPath,
+} from "@/lib/analytics";
 
 const ISSUER = "noc-admin";
 
@@ -23,7 +30,7 @@ async function isTokenValid(token: string | undefined): Promise<boolean> {
   }
 }
 
-export async function proxy(request: NextRequest) {
+async function handleAdmin(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   if (pathname === "/admin/login") return NextResponse.next();
@@ -38,6 +45,67 @@ export async function proxy(request: NextRequest) {
   return NextResponse.redirect(url);
 }
 
+function trackPageview(
+  request: NextRequest,
+  event: NextFetchEvent,
+): NextResponse {
+  const { pathname } = request.nextUrl;
+
+  let sessionId = request.cookies.get(ANALYTICS_COOKIE)?.value;
+  const isNewSession = !sessionId;
+  if (!sessionId) sessionId = newSessionId();
+
+  const response = NextResponse.next();
+  response.cookies.set({
+    name: ANALYTICS_COOKIE,
+    value: sessionId,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: ANALYTICS_COOKIE_MAX_AGE,
+  });
+
+  if (request.method === "GET") {
+    event.waitUntil(
+      recordPageview({
+        path: pathname,
+        referrer: request.headers.get("referer"),
+        userAgent: request.headers.get("user-agent"),
+        sessionId,
+      }),
+    );
+  }
+
+  // Surface session-new state in case future code wants it; not used today.
+  void isNewSession;
+  return response;
+}
+
+export async function proxy(request: NextRequest, event: NextFetchEvent) {
+  const { pathname } = request.nextUrl;
+
+  if (pathname.startsWith("/admin")) {
+    return handleAdmin(request);
+  }
+
+  if (shouldTrackPath(pathname)) {
+    return trackPageview(request, event);
+  }
+
+  return NextResponse.next();
+}
+
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: [
+    "/admin/:path*",
+    {
+      source:
+        "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\..*).*)",
+      missing: [
+        { type: "header", key: "next-router-prefetch" },
+        { type: "header", key: "purpose", value: "prefetch" },
+      ],
+    },
+  ],
 };

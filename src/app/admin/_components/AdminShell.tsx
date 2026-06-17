@@ -36,6 +36,12 @@ export function AdminShell({
                 Hlášení
               </Link>
               <Link
+                href="/admin/analytics"
+                className="text-zinc-600 hover:text-zinc-900"
+              >
+                Analytika
+              </Link>
+              <Link
                 href="/"
                 target="_blank"
                 rel="noopener noreferrer"

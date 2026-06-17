@@ -21,6 +21,7 @@ export const reportCategoryEnum = [
   "jine",
 ] as const;
 export const reportStatusEnum = ["new", "triaged", "resolved", "dismissed"] as const;
+export const uaClassEnum = ["mobile", "desktop", "bot", "other"] as const;
 
 export const locations = mysqlTable("locations", {
   id: serial("id").primaryKey(),
@@ -122,6 +123,23 @@ export const placeReports = mysqlTable(
   ],
 );
 
+export const analyticsEvents = mysqlTable(
+  "analytics_events",
+  {
+    id: serial("id").primaryKey(),
+    path: varchar("path", { length: 512 }).notNull(),
+    referrerHost: varchar("referrer_host", { length: 255 }),
+    uaClass: mysqlEnum("ua_class", uaClassEnum).notNull().default("other"),
+    sessionId: varchar("session_id", { length: 64 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("analytics_events_created_idx").on(table.createdAt),
+    index("analytics_events_path_created_idx").on(table.path, table.createdAt),
+    index("analytics_events_session_idx").on(table.sessionId, table.createdAt),
+  ],
+);
+
 export const schema = {
   locations,
   categories,
@@ -131,6 +149,7 @@ export const schema = {
   placeAmenities,
   placeImages,
   placeReports,
+  analyticsEvents,
 };
 
 export type Place = typeof places.$inferSelect;
@@ -141,3 +160,5 @@ export type Location = typeof locations.$inferSelect;
 export type PlaceImage = typeof placeImages.$inferSelect;
 export type PlaceReport = typeof placeReports.$inferSelect;
 export type NewPlaceReport = typeof placeReports.$inferInsert;
+export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
+export type NewAnalyticsEvent = typeof analyticsEvents.$inferInsert;
