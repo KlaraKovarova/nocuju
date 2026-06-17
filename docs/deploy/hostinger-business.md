@@ -241,3 +241,5 @@ Agents still never see the key value — only the secret name.
 - DB client (pool + TLS toggle): `src/db/client.ts`
 - Env template: `.env.example`
 - CI workflow: `.github/workflows/ci.yml`
+- Agent-driven recovery (logs/redeploy/rollback without hPanel):
+  [`docs/deploy/agent-recovery.md`](./agent-recovery.md)
