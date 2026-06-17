@@ -45,13 +45,17 @@ async function currentDatabase(): Promise<string> {
 }
 
 async function ensureAnalyticsEvents(db: string): Promise<void> {
+  // BIGINT UNSIGNED AUTO_INCREMENT — the expansion of MySQL/MariaDB SERIAL —
+  // written out explicitly so the DDL parses on both engines. Hostinger's
+  // managed DB is MariaDB and treats `SERIAL AUTO_INCREMENT NOT NULL` as a
+  // syntax error because SERIAL already implies NOT NULL AUTO_INCREMENT UNIQUE.
   await sqlClient.query(`CREATE TABLE IF NOT EXISTS \`analytics_events\` (
-    \`id\` SERIAL AUTO_INCREMENT NOT NULL,
+    \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     \`path\` VARCHAR(512) NOT NULL,
     \`referrer_host\` VARCHAR(255),
     \`ua_class\` ENUM('mobile','desktop','bot','other') NOT NULL DEFAULT 'other',
     \`session_id\` VARCHAR(64) NOT NULL,
-    \`created_at\` TIMESTAMP NOT NULL DEFAULT (now()),
+    \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT \`analytics_events_id\` PRIMARY KEY (\`id\`)
   )`);
 
