@@ -14,68 +14,68 @@ const EXPECTED_TABLES = [
 
 const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS \`amenities\` (
-    \`id\` SERIAL AUTO_INCREMENT NOT NULL,
+    \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     \`slug\` VARCHAR(64) NOT NULL,
     \`label\` VARCHAR(128) NOT NULL,
-    CONSTRAINT \`amenities_id\` PRIMARY KEY(\`id\`),
-    CONSTRAINT \`amenities_slug_uq\` UNIQUE(\`slug\`)
+    PRIMARY KEY(\`id\`),
+    UNIQUE KEY \`amenities_slug_uq\` (\`slug\`)
   )`,
   `CREATE TABLE IF NOT EXISTS \`analytics_events\` (
-    \`id\` SERIAL AUTO_INCREMENT NOT NULL,
+    \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     \`path\` VARCHAR(512) NOT NULL,
     \`referrer_host\` VARCHAR(255),
     \`ua_class\` ENUM('mobile','desktop','bot','other') NOT NULL DEFAULT 'other',
     \`session_id\` VARCHAR(64) NOT NULL,
-    \`created_at\` TIMESTAMP NOT NULL DEFAULT (now()),
-    CONSTRAINT \`analytics_events_id\` PRIMARY KEY(\`id\`)
+    \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(\`id\`)
   )`,
   `CREATE TABLE IF NOT EXISTS \`categories\` (
-    \`id\` SERIAL AUTO_INCREMENT NOT NULL,
+    \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     \`slug\` VARCHAR(64) NOT NULL,
     \`name\` VARCHAR(128) NOT NULL,
-    CONSTRAINT \`categories_id\` PRIMARY KEY(\`id\`),
-    CONSTRAINT \`categories_slug_uq\` UNIQUE(\`slug\`)
+    PRIMARY KEY(\`id\`),
+    UNIQUE KEY \`categories_slug_uq\` (\`slug\`)
   )`,
   `CREATE TABLE IF NOT EXISTS \`locations\` (
-    \`id\` SERIAL AUTO_INCREMENT NOT NULL,
+    \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     \`city\` VARCHAR(128) NOT NULL,
     \`region\` VARCHAR(128),
     \`country\` VARCHAR(2) NOT NULL DEFAULT 'CZ',
-    \`created_at\` TIMESTAMP NOT NULL DEFAULT (now()),
-    CONSTRAINT \`locations_id\` PRIMARY KEY(\`id\`)
+    \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(\`id\`)
   )`,
   `CREATE TABLE IF NOT EXISTS \`place_amenities\` (
     \`place_id\` INT NOT NULL,
     \`amenity_id\` INT NOT NULL,
-    CONSTRAINT \`place_amenities_place_id_amenity_id_pk\` PRIMARY KEY(\`place_id\`,\`amenity_id\`)
+    PRIMARY KEY(\`place_id\`,\`amenity_id\`)
   )`,
   `CREATE TABLE IF NOT EXISTS \`place_categories\` (
     \`place_id\` INT NOT NULL,
     \`category_id\` INT NOT NULL,
-    CONSTRAINT \`place_categories_place_id_category_id_pk\` PRIMARY KEY(\`place_id\`,\`category_id\`)
+    PRIMARY KEY(\`place_id\`,\`category_id\`)
   )`,
   `CREATE TABLE IF NOT EXISTS \`place_images\` (
-    \`id\` SERIAL AUTO_INCREMENT NOT NULL,
+    \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     \`place_id\` INT NOT NULL,
     \`url\` VARCHAR(1024) NOT NULL,
     \`alt\` VARCHAR(256),
     \`sort_order\` INT NOT NULL DEFAULT 0,
-    CONSTRAINT \`place_images_id\` PRIMARY KEY(\`id\`)
+    PRIMARY KEY(\`id\`)
   )`,
   `CREATE TABLE IF NOT EXISTS \`place_reports\` (
-    \`id\` SERIAL AUTO_INCREMENT NOT NULL,
+    \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     \`place_id\` INT NOT NULL,
     \`category\` ENUM('info-nesedi','nema-ho-tam','nebezpecne','jine') NOT NULL,
     \`note\` VARCHAR(500),
     \`contact_email\` VARCHAR(254),
     \`source_ip_hash\` VARCHAR(64),
     \`status\` ENUM('new','triaged','resolved','dismissed') NOT NULL DEFAULT 'new',
-    \`created_at\` TIMESTAMP NOT NULL DEFAULT (now()),
-    \`updated_at\` TIMESTAMP NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT \`place_reports_id\` PRIMARY KEY(\`id\`)
+    \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updated_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY(\`id\`)
   )`,
   `CREATE TABLE IF NOT EXISTS \`places\` (
-    \`id\` SERIAL AUTO_INCREMENT NOT NULL,
+    \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     \`slug\` VARCHAR(160) NOT NULL,
     \`name\` VARCHAR(200) NOT NULL,
     \`description\` TEXT,
@@ -89,11 +89,11 @@ const SCHEMA_STATEMENTS: string[] = [
     \`is_free\` BOOLEAN NOT NULL DEFAULT true,
     \`source\` ENUM('boudy.info','viaczechia','manual') NOT NULL DEFAULT 'manual',
     \`source_url\` VARCHAR(512),
-    \`created_at\` TIMESTAMP NOT NULL DEFAULT (now()),
-    \`updated_at\` TIMESTAMP NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT \`places_id\` PRIMARY KEY(\`id\`),
-    CONSTRAINT \`places_slug_uq\` UNIQUE(\`slug\`),
-    CONSTRAINT \`places_source_url_uq\` UNIQUE(\`source\`,\`source_url\`)
+    \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updated_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY(\`id\`),
+    UNIQUE KEY \`places_slug_uq\` (\`slug\`),
+    UNIQUE KEY \`places_source_url_uq\` (\`source\`,\`source_url\`)
   )`,
 ];
 
