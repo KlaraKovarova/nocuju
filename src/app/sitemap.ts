@@ -30,16 +30,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: entry.priority,
   }));
 
-  const [regionRows, placeRows] = await Promise.all([
-    loadRegionRows(),
-    db
-      .select({
-        slug: places.slug,
-        updatedAt: places.updatedAt,
-      })
-      .from(places)
-      .orderBy(asc(places.slug)),
-  ]);
+  let regionRows: Awaited<ReturnType<typeof loadRegionRows>> = [];
+  let placeRows: Array<{ slug: string; updatedAt: Date | null }> = [];
+  try {
+    [regionRows, placeRows] = await Promise.all([
+      loadRegionRows(),
+      db
+        .select({
+          slug: places.slug,
+          updatedAt: places.updatedAt,
+        })
+        .from(places)
+        .orderBy(asc(places.slug)),
+    ]);
+  } catch {
+    // DB unavailable at build/ISR time — fall back to static-only sitemap.
+  }
 
   for (const region of regionRows) {
     entries.push({

@@ -1,0 +1,216 @@
+name: Recover
+
+# Agent-callable Hostinger recovery via SSH.
+# Trigger from any laptop with `gh workflow run recover.yml -f action=<action>`.
+# Read output with `gh run view <run-id> --log`.
+# Design doc: docs/deploy/agent-recovery.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do on the Hostinger box"
+        required: true
+        type: choice
+        options:
+          - tail-logs
+          - verify-deploy
+          - pull-and-restart
+          - rollback
+          - db-bootstrap
+          - db-schema-push
+      lines:
+        description: "tail-logs: number of log lines to print (default 200)"
+        required: false
+        default: "200"
+        type: string
+      target_sha:
+        description: "rollback: commit SHA to check out before restart"
+        required: false
+        type: string
+
+concurrency:
+  group: recover-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify required secrets
+        env:
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+        run: |
+          set -eu
+          missing=()
+          [ -z "${HOST:-}" ] && missing+=("HOSTINGER_SSH_HOST")
+          [ -z "${USER:-}" ] && missing+=("HOSTINGER_SSH_USER")
+          [ -z "${KEY:-}" ] && missing+=("HOSTINGER_SSH_KEY")
+          [ -z "${APP_PATH:-}" ] && missing+=("HOSTINGER_APP_PATH")
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing repo secrets: ${missing[*]}"
+            echo "Board action required: see docs/deploy/agent-recovery.md §3."
+            exit 1
+          fi
+
+      - name: Load SSH key
+        env:
+          KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_recover
+          chmod 600 ~/.ssh/id_recover
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: tail-logs
+        if: inputs.action == 'tail-logs'
+        env:
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          LINES: ${{ inputs.lines }}
+        run: |
+          set -eu
+          LINES_INT="${LINES:-200}"
+          ssh -i ~/.ssh/id_recover -o BatchMode=yes "$USER@$HOST" \
+            "cd \"$APP_PATH\" && echo '=== stderr.log (last '$LINES_INT' lines) ===' && (tail -n $LINES_INT nodejs/stderr.log 2>/dev/null || echo '(no stderr.log)') && echo '=== stdout.log (last '$LINES_INT' lines) ===' && (tail -n $LINES_INT nodejs/stdout.log 2>/dev/null || echo '(no stdout.log)')"
+
+      - name: verify-deploy
+        if: inputs.action == 'verify-deploy'
+        env:
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+        run: |
+          set -eu
+          ssh -i ~/.ssh/id_recover -o BatchMode=yes "$USER@$HOST" \
+            "cd \"$APP_PATH\" && echo 'deployed_sha='\$(git rev-parse HEAD) && echo 'deployed_branch='\$(git rev-parse --abbrev-ref HEAD) && echo 'last_deploy_log:' && (git log -1 --format='%H %ci %s')"
+
+      - name: pull-and-restart
+        if: inputs.action == 'pull-and-restart'
+        env:
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+        run: |
+          set -eu
+          ssh -i ~/.ssh/id_recover -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
+            set -eu
+            cd "$APP_PATH"
+            echo 'before_sha='$(git rev-parse HEAD)
+            git fetch --prune origin
+            git reset --hard origin/main
+            echo 'after_sha='$(git rev-parse HEAD)
+            NODE_ENV=production npm ci --prefer-offline --no-audit --no-fund
+            npm run build
+            mkdir -p tmp
+            touch tmp/restart.txt
+            echo 'restart_signalled'
+          EOF
+
+      - name: db-schema-push
+        if: inputs.action == 'db-schema-push'
+        env:
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+        run: |
+          set -eu
+          ssh -i ~/.ssh/id_recover -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
+            set -eu
+            cd "$APP_PATH"
+            # drizzle-kit reads DATABASE_URL from process.env (see drizzle.config.ts).
+            # Hostinger's Node.js app sets it as a system env var, so a login
+            # shell here inherits it. If it's not exported in the SSH session,
+            # surface that clearly instead of silently writing to nothing.
+            # Hostinger sets DATABASE_URL on the Node.js process, not in interactive
+            # SSH. Try common locations a Hostinger Business plan writes env to.
+            for candidate in nodejs/.env .env .env.production "$HOME/.env"; do
+              if [ -f "$candidate" ] && grep -q '^DATABASE_URL=' "$candidate"; then
+                set -a
+                . "$candidate"
+                set +a
+                break
+              fi
+            done
+            if [ -z "${DATABASE_URL:-}" ]; then
+              echo "::error::DATABASE_URL not found in SSH session or .env files"
+              echo "Looked in: nodejs/.env, .env, .env.production, ~/.env."
+              echo "Fix: paste the prod DSN into a GitHub secret HOSTINGER_DATABASE_URL"
+              echo "and rerun this workflow. See docs/deploy/agent-recovery.md §db."
+              exit 1
+            fi
+            echo 'database_host='$(echo "$DATABASE_URL" | sed -E 's|.*@([^/:]+).*|\1|')
+            # drizzle-kit lives in devDependencies; prod tree is installed with
+            # NODE_ENV=production, so devDeps aren't present. Install on demand.
+            npx --yes drizzle-kit push --config=drizzle.config.ts
+            echo 'schema_push_complete'
+          EOF
+
+      - name: db-bootstrap
+        if: inputs.action == 'db-bootstrap'
+        env:
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+        run: |
+          set -eu
+          ssh -i ~/.ssh/id_recover -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
+            set -eu
+            cd "$APP_PATH"
+            for candidate in nodejs/.env .env .env.production "$HOME/.env"; do
+              if [ -f "$candidate" ] && grep -q '^DATABASE_URL=' "$candidate"; then
+                set -a
+                . "$candidate"
+                set +a
+                break
+              fi
+            done
+            if [ -z "${DATABASE_URL:-}" ]; then
+              echo "::error::DATABASE_URL not found in SSH session or .env files"
+              echo "Looked in: nodejs/.env, .env, .env.production, ~/.env."
+              echo "Fix: paste the prod DSN into a GitHub secret HOSTINGER_DATABASE_URL"
+              echo "and rerun this workflow. See docs/deploy/agent-recovery.md §db."
+              exit 1
+            fi
+            echo 'database_host='$(echo "$DATABASE_URL" | sed -E 's|.*@([^/:]+).*|\1|')
+            echo '--- step 1: drizzle-kit push'
+            npx --yes drizzle-kit push --config=drizzle.config.ts
+            echo '--- step 2: seed (idempotent: re-running is safe)'
+            npx --yes tsx scripts/seed.ts
+            echo 'bootstrap_complete'
+          EOF
+
+      - name: rollback
+        if: inputs.action == 'rollback'
+        env:
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -eu
+          if [ -z "${TARGET_SHA:-}" ]; then
+            echo "::error::rollback requires -f target_sha=<sha>"
+            exit 1
+          fi
+          ssh -i ~/.ssh/id_recover -o BatchMode=yes "$USER@$HOST" bash -se <<EOF
+            set -eu
+            cd "$APP_PATH"
+            echo 'before_sha='\$(git rev-parse HEAD)
+            git fetch --prune origin
+            git checkout --detach "$TARGET_SHA"
+            echo 'after_sha='\$(git rev-parse HEAD)
+            NODE_ENV=production npm ci --prefer-offline --no-audit --no-fund
+            npm run build
+            mkdir -p tmp
+            touch tmp/restart.txt
+            echo 'restart_signalled'
+          EOF

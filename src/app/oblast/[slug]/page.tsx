@@ -18,8 +18,12 @@ import { PlaceCard, type PlaceCardData } from "@/app/objevit/_components/PlaceCa
 export const revalidate = 3600;
 
 export async function generateStaticParams() {
-  const rows = await loadRegionRows();
-  return rows.map((r) => ({ slug: r.slug }));
+  try {
+    const rows = await loadRegionRows();
+    return rows.map((r) => ({ slug: r.slug }));
+  } catch {
+    return [];
+  }
 }
 
 async function loadRegionPlaces(regionName: string): Promise<PlaceCardData[]> {

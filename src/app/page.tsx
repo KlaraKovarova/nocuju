@@ -5,10 +5,14 @@ import { db } from "@/db/client";
 import { places } from "@/db/schema";
 
 async function countPlaces(): Promise<number> {
-  const [row] = (await db
-    .select({ count: sql<number>`count(*)` })
-    .from(places)) as Array<{ count: number }>;
-  return Number(row?.count ?? 0);
+  try {
+    const [row] = (await db
+      .select({ count: sql<number>`count(*)` })
+      .from(places)) as Array<{ count: number }>;
+    return Number(row?.count ?? 0);
+  } catch {
+    return 0;
+  }
 }
 
 type Tile = {

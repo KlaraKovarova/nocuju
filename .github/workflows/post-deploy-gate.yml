@@ -1,0 +1,98 @@
+name: Post-deploy gate
+
+# Runs after a push to main. Waits for Hostinger to actually deploy the new
+# commit (polls /api/health/version), then runs probes. If any probe fails,
+# triggers the rollback action of recover.yml.
+# Design doc: docs/deploy/agent-recovery.md
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: post-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PROD_BASE_URL: "https://www.nocuju.cz"
+  DEPLOY_SETTLE_SECONDS: "30"
+  DEPLOY_WAIT_TIMEOUT_SECONDS: "300"
+  PROBE_TIMEOUT_SECONDS: "5"
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Capture previous good SHA (for possible rollback)
+        id: prev
+        run: |
+          set -eu
+          PREV=$(git rev-parse HEAD~1 || true)
+          echo "previous_sha=$PREV" >> "$GITHUB_OUTPUT"
+          echo "Previous SHA candidate for rollback: $PREV"
+
+      - name: Settle window
+        run: sleep "$DEPLOY_SETTLE_SECONDS"
+
+      - name: Wait for deployed SHA to match
+        id: wait
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          deadline=$(( $(date +%s) + DEPLOY_WAIT_TIMEOUT_SECONDS ))
+          observed=""
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            payload=$(curl -fsS --max-time "$PROBE_TIMEOUT_SECONDS" "$PROD_BASE_URL/api/health/version" || echo "")
+            observed=$(printf '%s' "$payload" | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')
+            echo "observed=$observed expected=$EXPECTED_SHA"
+            if [ "$observed" = "$EXPECTED_SHA" ]; then
+              echo "deployed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "deployed=false" >> "$GITHUB_OUTPUT"
+          echo "observed_sha=$observed" >> "$GITHUB_OUTPUT"
+          echo "::error::Deploy drift: production still serving $observed after ${DEPLOY_WAIT_TIMEOUT_SECONDS}s, expected $EXPECTED_SHA"
+          exit 1
+
+      - name: Probe critical routes
+        if: steps.wait.outputs.deployed == 'true'
+        id: probes
+        run: |
+          set -eu
+          ROUTES=("/api/health" "/api/health/version" "/api/health/schema" "/")
+          failed=()
+          for route in "${ROUTES[@]}"; do
+            code=$(curl -s -o /tmp/body -w '%{http_code}' --max-time "$PROBE_TIMEOUT_SECONDS" "$PROD_BASE_URL$route" || echo "000")
+            echo "GET $route -> $code"
+            if [ "$code" != "200" ]; then
+              echo "::error::Probe failed: $route -> $code"
+              echo "--- body ---"; head -c 500 /tmp/body || true; echo
+              failed+=("$route")
+            fi
+          done
+          if [ ${#failed[@]} -ne 0 ]; then
+            echo "failed_routes=${failed[*]}" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      - name: Trigger rollback on failure
+        if: failure() && steps.prev.outputs.previous_sha != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PREVIOUS_SHA: ${{ steps.prev.outputs.previous_sha }}
+        run: |
+          set -eu
+          echo "Probes failed — triggering rollback to $PREVIOUS_SHA"
+          gh workflow run recover.yml \
+            -f action=rollback \
+            -f target_sha="$PREVIOUS_SHA"
+          echo "Rollback dispatched. Investigate run output for completion."

@@ -13,6 +13,8 @@ import { type PlaceCardData } from "../objevit/_components/PlaceCard";
 
 import { MojeMistaList } from "./MojeMistaList";
 
+export const dynamic = "force-dynamic";
+
 async function loadAllPlaceCards(): Promise<PlaceCardData[]> {
   const rows = await db
     .select({

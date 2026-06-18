@@ -76,6 +76,26 @@ Notes:
   `localhost` and break the reverse proxy.
 - Do **not** add a `prebuild` step that talks to the DB. Hostinger's build phase
   runs without the live env in some plans; only the runtime has `DATABASE_URL`.
+- **`NODE_ENV=production` is set on the Node.js app, so `npm ci` skips
+  `devDependencies`.** The rule on this repo is therefore:
+  **any package referenced at build time or runtime lives in `dependencies`**.
+  Only test-only and lint-only tooling (`vitest`, `eslint*`, `drizzle-kit`,
+  `tsx`) stays in `devDependencies`. That means `typescript`, every `@types/*`
+  Next.js needs to typecheck, `@tailwindcss/postcss`, `tailwindcss`, `next`,
+  `react`, `react-dom`, the MySQL driver, etc. all sit in `dependencies`.
+  If a build-time tool slips into `devDependencies`, Next.js prints
+  `It looks like you're trying to use TypeScript but do not have the required
+  package(s) installed` and silently auto-installs the missing deps mid-build,
+  costing ~6s and pulling extra vulnerabilities into the prod image. CI happens
+  to install everything (no `NODE_ENV` set), so a missing prod-deps placement
+  won't show up there. **Verify by running `NODE_ENV=production npm ci &&
+  npm run build` locally before promoting a new build-time tool**; the build
+  must succeed with no "Installing dependencies" auto-install step in the log.
+- Anything `tsc`/Next's typecheck step would walk into that *only* exists for
+  dev tooling (e.g. `drizzle.config.ts` importing `drizzle-kit`,
+  `vitest.config.ts` importing `vitest`) must be excluded from `tsconfig.json`'s
+  `include`/`exclude` so the production typecheck doesn't drag dev-only types
+  into the build.
 
 ---
 
@@ -221,3 +241,5 @@ Agents still never see the key value — only the secret name.
 - DB client (pool + TLS toggle): `src/db/client.ts`
 - Env template: `.env.example`
 - CI workflow: `.github/workflows/ci.yml`
+- Agent-driven recovery (logs/redeploy/rollback without hPanel):
+  [`docs/deploy/agent-recovery.md`](./agent-recovery.md)
