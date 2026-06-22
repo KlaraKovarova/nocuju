@@ -65,9 +65,34 @@ jobs:
           set -eu
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_recover
+          # Strip CRs in case the secret was pasted with Windows line endings.
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/id_recover
           chmod 600 ~/.ssh/id_recover
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Diagnostic: verify private key parses (does not reveal key material).
+          if ! ssh-keygen -y -f ~/.ssh/id_recover > /dev/null 2>&1; then
+            echo "::error::HOSTINGER_SSH_KEY does not parse as a valid OpenSSH private key."
+            echo "Common causes: wrong key pasted (public not private), missing BEGIN/END lines,"
+            echo "extra whitespace, or wrong format (PEM vs OpenSSH). Regenerate with"
+            echo "ssh-keygen -t ed25519 -f ~/.ssh/noc-recovery and paste the full contents of"
+            echo "~/.ssh/noc-recovery (not the .pub file) into HOSTINGER_SSH_KEY."
+            exit 1
+          fi
+          # Diagnostic: ensure HOST is a bare hostname, not user@host or host:port.
+          case "$HOST" in
+            *@*) echo "::error::HOSTINGER_SSH_HOST contains '@' — it should be just the hostname (paste user part into HOSTINGER_SSH_USER)." ; exit 1 ;;
+            *:*) echo "::error::HOSTINGER_SSH_HOST contains ':' — strip any port suffix. Custom ports are not supported yet." ; exit 1 ;;
+            */*) echo "::error::HOSTINGER_SSH_HOST contains '/' — paste just the hostname, not a URL." ; exit 1 ;;
+          esac
+          # Surface ssh-keyscan errors instead of silencing them.
+          if ! ssh-keyscan -T 10 -H "$HOST" >> ~/.ssh/known_hosts 2> /tmp/keyscan.err; then
+            echo "::error::ssh-keyscan failed for the configured HOSTINGER_SSH_HOST."
+            echo "stderr (host value itself is masked by Actions):"
+            cat /tmp/keyscan.err
+            echo "Likely cause: SSH not enabled on the Hostinger box yet, or HOSTINGER_SSH_HOST"
+            echo "is wrong. Confirm in hPanel → Advanced → SSH Access that SSH is enabled and"
+            echo "copy the host shown there exactly."
+            exit 1
+          fi
 
       - name: tail-logs
         if: inputs.action == 'tail-logs'
