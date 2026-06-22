@@ -19,6 +19,7 @@ on:
           - rollback
           - db-bootstrap
           - db-schema-push
+          - diagnose
       lines:
         description: "tail-logs: number of log lines to print (default 200)"
         required: false
@@ -131,6 +132,44 @@ jobs:
           # with "exec request failed on channel 0". Single-string exec works.
           ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
             "cd \"$APP_PATH\" && for f in stderr.log console.log stdout.log nodejs/stderr.log nodejs/stdout.log; do [ -f \"\$f\" ] || continue; echo \"=== \$f (last $LINES_INT lines) ===\"; tail -n $LINES_INT \"\$f\" || true; echo; done"
+
+      - name: diagnose
+        if: inputs.action == 'diagnose'
+        env:
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PORT: ${{ steps.load_ssh.outputs.port }}
+        run: |
+          set -eu
+          # Single-command inline exec — Hostinger's sshd rejects heredoc+env requests
+          # (see the tail-logs comment above). We bake APP_PATH into the literal string.
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" "
+            set -e
+            cd \"$APP_PATH\"
+            echo '=== node --version ==='
+            node --version || true
+            echo
+            echo '=== env (filtered, no secrets) ==='
+            env | grep -Ev '(PASS|KEY|TOKEN|SECRET|DATABASE_URL|SSH|API_KEY)' | sort | head -60 || true
+            echo
+            echo '=== ls -la \$APP_PATH ==='
+            ls -la
+            echo
+            echo '=== server.js ==='
+            wc -c server.js
+            echo '---'
+            cat server.js
+            echo
+            echo '=== package.json ==='
+            cat package.json
+            echo
+            echo '=== .next layout (depth 2) ==='
+            find .next -maxdepth 2 -mindepth 1 -printf '%y %s %p\n' 2>/dev/null | head -40 || ls -la .next | head -40
+            echo
+            echo '=== node server.js (10s capture, stdout+stderr) ==='
+            ( timeout 10 node server.js 2>&1 | head -200 ) || echo 'node exit code:' \$?
+          "
 
       - name: verify-deploy
         if: inputs.action == 'verify-deploy'
