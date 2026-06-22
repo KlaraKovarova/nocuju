@@ -308,10 +308,25 @@ jobs:
 
             # Non-login SSH on Hostinger Business has no node/npm in PATH —
             # CloudLinux NodeJS Selector installs them under
-            # /opt/alt/alt-nodejs<MAJOR>/root/usr/bin/. Probe newest-first.
+            # /opt/alt/alt-nodejs<MAJOR>/root/usr/bin/. We must match the
+            # runtime's selected major (newest-available isn't safe: building
+            # with node 24 on this kernel SIGABRTs under the user's cgroup
+            # memory cap). Probe order:
+            #   1) major of the currently-running server.js node (best match
+            #      for the version hPanel was configured to use)
+            #   2) 22, 20, 18 (current → older LTS), then any installed
+            preferred=""
+            for pid in $(pgrep -u "$(id -u)" -f 'server.js' 2>/dev/null); do
+              exe=$(readlink "/proc/$pid/exe" 2>/dev/null || true)
+              m=$(printf '%s' "$exe" | sed -nE 's|.*alt-nodejs([0-9]+).*|\1|p')
+              if [ -n "$m" ]; then preferred="$m"; break; fi
+            done
             node_bin=""
-            for d in $(ls -d /opt/alt/alt-nodejs*/root/usr/bin 2>/dev/null \
-                         | sort -V -r); do
+            for major in $preferred 22 20 18 \
+                         $(ls -d /opt/alt/alt-nodejs*/root 2>/dev/null \
+                           | sed -nE 's|.*alt-nodejs([0-9]+).*|\1|p' \
+                           | sort -V -r); do
+              d="/opt/alt/alt-nodejs${major}/root/usr/bin"
               if [ -x "$d/node" ] && [ -x "$d/npm" ]; then
                 node_bin="$d"
                 break
@@ -322,7 +337,7 @@ jobs:
               exit 1
             fi
             export PATH="$node_bin:$PATH"
-            echo "using_node=$(node --version) npm=$(npm --version) path=$node_bin"
+            echo "using_node=$(node --version) npm=$(npm --version) path=$node_bin runtime_pref=${preferred:-none}"
 
             SRC="$HOME/.noc-src"
             echo "=== $ACTION → $TARGET_REF ==="
