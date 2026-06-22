@@ -125,17 +125,12 @@ jobs:
           # the application root (console.log, stderr.log), not under a nested
           # nodejs/ directory. Tail both, plus the legacy stdout.log path in
           # case the layout differs on other plans.
+          #
+          # Use a single inline exec command (no heredoc + `env VAR=...` prefix):
+          # Hostinger's shared-hosting sshd rejects multi-env-var exec requests
+          # with "exec request failed on channel 0". Single-string exec works.
           ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
-            env APP_PATH="$APP_PATH" LINES_INT="$LINES_INT" bash -se <<'EOF'
-            set -eu
-            cd "$APP_PATH"
-            for f in stderr.log console.log stdout.log nodejs/stderr.log nodejs/stdout.log; do
-              [ -f "$f" ] || continue
-              echo "=== $f (last $LINES_INT lines) ==="
-              tail -n "$LINES_INT" "$f" || true
-              echo
-            done
-          EOF
+            "cd \"$APP_PATH\" && for f in stderr.log console.log stdout.log nodejs/stderr.log nodejs/stdout.log; do [ -f \"\$f\" ] || continue; echo \"=== \$f (last $LINES_INT lines) ===\"; tail -n $LINES_INT \"\$f\" || true; echo; done"
 
       - name: verify-deploy
         if: inputs.action == 'verify-deploy'
