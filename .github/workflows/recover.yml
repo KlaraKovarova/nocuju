@@ -291,10 +291,13 @@ jobs:
           else
             TARGET_REF="$TARGET_SHA"
           fi
+          # Positional args (`bash -s --`) instead of `env VAR=val` — Hostinger's
+          # shared sshd intermittently drops sessions when multiple env vars are
+          # set in the exec request; positional args are reliable.
           ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
-            env APP_PATH="$APP_PATH" REPO_URL="$REPO_URL" \
-                TARGET_REF="$TARGET_REF" ACTION="$ACTION" bash -se <<'EOF'
+            bash -se -- "$APP_PATH" "$REPO_URL" "$TARGET_REF" "$ACTION" <<'EOF'
             set -eu
+            APP_PATH="$1"; REPO_URL="$2"; TARGET_REF="$3"; ACTION="$4"
 
             # Hostinger Business' "Pull from GitHub" feature does not ship .git
             # into APP_PATH — only build artifacts (server.js, .next/,
