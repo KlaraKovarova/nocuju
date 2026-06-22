@@ -145,30 +145,44 @@ jobs:
           # Single-command inline exec — Hostinger's sshd rejects heredoc+env requests
           # (see the tail-logs comment above). We bake APP_PATH into the literal string.
           ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" "
-            set -e
+            set +e
             cd \"$APP_PATH\"
-            echo '=== node --version ==='
-            node --version || true
+            echo '=== running node processes ==='
+            ps -fu \$(id -u) | grep -E '[n]ode|server\\.js' || echo 'no node procs'
             echo
-            echo '=== env (filtered, no secrets) ==='
-            env | grep -Ev '(PASS|KEY|TOKEN|SECRET|DATABASE_URL|SSH|API_KEY)' | sort | head -60 || true
+            echo '=== env of running node process (if any) ==='
+            for pid in \$(pgrep -u \$(id -u) -f 'server.js' 2>/dev/null); do
+              echo --- pid \$pid ---
+              ( tr '\\0' '\\n' < /proc/\$pid/environ 2>/dev/null \
+                  | grep -Ev '^(.*PASS|.*KEY|.*TOKEN|.*SECRET|DATABASE_URL|.*SSH)' \
+                  | sort ) || echo 'cannot read environ'
+              echo --- cwd ---
+              readlink /proc/\$pid/cwd 2>/dev/null || true
+              echo --- cmdline ---
+              tr '\\0' ' ' < /proc/\$pid/cmdline 2>/dev/null; echo
+            done
             echo
-            echo '=== ls -la \$APP_PATH ==='
-            ls -la
+            echo '=== sockets owned by user (ss -tlnp / unix) ==='
+            ss -tlnp 2>/dev/null | head -40 || netstat -tlnp 2>/dev/null | head -40 || echo 'no ss/netstat'
             echo
-            echo '=== server.js ==='
-            wc -c server.js
-            echo '---'
-            cat server.js
+            ss -xlp 2>/dev/null | head -20 || true
             echo
-            echo '=== package.json ==='
-            cat package.json
+            echo '=== tmp/ contents ==='
+            ls -la tmp/ 2>/dev/null || true
             echo
-            echo '=== .next layout (depth 2) ==='
-            find .next -maxdepth 2 -mindepth 1 -printf '%y %s %p\n' 2>/dev/null | head -40 || ls -la .next | head -40
+            echo '=== nodejs/.env (existence, NO contents) ==='
+            for f in nodejs/.env .env .env.production \$HOME/.env; do
+              [ -e \"\$f\" ] && echo \"present: \$f (\$(wc -c < \"\$f\") bytes)\"
+            done
             echo
-            echo '=== node server.js (10s capture, stdout+stderr) ==='
-            ( timeout 10 node server.js 2>&1 | head -200 ) || echo 'node exit code:' \$?
+            echo '=== console.log tail (last 60 lines, after diagnose started) ==='
+            tail -n 60 console.log 2>/dev/null || true
+            echo
+            echo '=== which node + path ==='
+            command -v node || find /opt /usr /home/\$(whoami) -maxdepth 6 -name node -type f 2>/dev/null | head -5
+            echo
+            echo '=== server.js head ==='
+            head -20 server.js
           "
 
       - name: verify-deploy
