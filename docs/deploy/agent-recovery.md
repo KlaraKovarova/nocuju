@@ -104,9 +104,10 @@ If that resolution fails (older deploys, ad-hoc rebuilds), the endpoint reports
 
 `workflow_dispatch` inputs:
 
-- `action`: `tail-logs` | `verify-deploy` | `pull-and-restart` | `rollback`
+- `action`: `tail-logs` | `verify-deploy` | `pull-and-restart` | `rollback` |
+  `diagnose` | `db-bootstrap` | `db-schema-push`
 - `lines`: integer (used by `tail-logs`, default `200`)
-- `target_sha`: short SHA (used by `rollback`)
+- `target_sha`: full SHA (used by `rollback`)
 
 The job loads `HOSTINGER_SSH_HOST`, `HOSTINGER_SSH_USER`, `HOSTINGER_SSH_KEY`,
 `HOSTINGER_APP_PATH` from repo secrets, opens an SSH connection, runs the
@@ -122,6 +123,36 @@ gh run view <id> --log
 If the secrets are missing the workflow fails fast with a single-line message
 telling the operator which secret is unset. That's our signal that the board
 hasn't completed the one-time setup yet.
+
+#### How `pull-and-restart` and `rollback` work on Hostinger Business (NOC-65)
+
+Hostinger's *Node.js → Pull from GitHub* drops only the built artifacts into
+`APP_PATH` (`server.js`, `.next/`, `node_modules/`, `package.json`, `public/`)
+— **never `.git/`**. So neither action can `git fetch` from `APP_PATH`. Both
+actions instead share a single body that:
+
+1. Maintains a sibling source checkout at `$HOME/.noc-src` (clones the public
+   GitHub repo on first run, fetches+checks out the target ref on subsequent
+   runs). `pull-and-restart` targets `origin/main`; `rollback` targets the
+   explicit `target_sha`.
+2. Runs `NODE_ENV=production npm ci && npm run build` in `$HOME/.noc-src`. The
+   postbuild step patches `.next/standalone/server.js` for Phusion Passenger
+   (NOC-64). `BUILD_COMMIT_SHA` is exported so `/api/health/version` reports
+   the SHA we just deployed.
+3. Takes a hardlinked snapshot of `APP_PATH` at
+   `$HOME/.noc-snapshots/pre-<action>-<ts>/` (cheap; last 5 retained) for
+   forensic recovery.
+4. Rsyncs the standalone tree into `APP_PATH` with `--delete`, excluding
+   runtime files we must preserve (`tmp/`, `*.log`, `nodejs/`, `.env*`,
+   `.noc-deploy-sha`, and `.next/static/` which is synced separately). Then
+   rsyncs `.next/static/` and `public/` separately with `--delete`.
+5. Writes `$APP_PATH/.noc-deploy-sha` so `verify-deploy` can report what was
+   last deployed (we have no `.git` to inspect on the box).
+6. `touch tmp/restart.txt` — same restart channel Hostinger uses for its
+   own deploys.
+
+This sidesteps Hostinger's webhook-based pull mechanism entirely while still
+producing the exact layout that the platform's Node app expects.
 
 ### 2.3 Post-deploy gate (`.github/workflows/post-deploy-gate.yml`)
 
@@ -212,29 +243,43 @@ The agent's heartbeat runbook. Each step is a single command.
    gh workflow run recover.yml -f action=tail-logs -f lines=500
    gh run watch
    ```
-   Read the captured `stderr.log` / `stdout.log` tail in the workflow output.
+   Read the captured `stderr.log` / `console.log` tail in the workflow output.
 3. **Verify deployed commit.**
    ```bash
    npm run probe -- verify
    ```
    - `IN_SYNC` → it's not a deploy drift.
-   - `DRIFT` → hPanel hasn't pulled `main`. Run step 4.
-4. **Force a pull + restart.**
+   - `DRIFT` → hPanel hasn't pulled `main`, or our last recover deploy is
+     stale. Run step 4.
+4. **Force a pull + restart** (build origin/main into `APP_PATH` via the
+   sibling source checkout at `$HOME/.noc-src` — see §2.2 for the mechanism).
    ```bash
    gh workflow run recover.yml -f action=pull-and-restart
    gh run watch
    ```
    After it completes, re-run `/api/health` and `verify`.
-5. **If the latest commit is the broken one, roll back.**
+5. **If the latest commit is the broken one, roll back to a previous SHA.**
    ```bash
    gh workflow run recover.yml -f action=rollback -f target_sha=<previous-good-sha>
    gh run watch
    ```
+   The rollback rebuilds `<previous-good-sha>` from source on the Hostinger
+   box, rsyncs the standalone tree into `APP_PATH`, and signals restart. It
+   leaves a hardlinked snapshot of the prior state at
+   `$HOME/.noc-snapshots/pre-rollback-<ts>/` (last 5 retained) for forensic
+   recovery if the rebuild itself goes sideways.
+
+   *Caveat*: if Hostinger's auto-deploy is still enabled, the next push to
+   `main` will pull and rebuild on top of your rollback. Either land a
+   forward-fix immediately or pause auto-deploy in hPanel → *Git*.
+
    Then file a follow-up ticket explaining the breakage and what to ship next.
-6. **If none of the above recover the box**, comment on the open incident
-   ticket with the runbook outputs and escalate to the CEO with a specific
-   action (likely: hPanel password reset, plan/firewall change, or MySQL
-   reset — all things only the board can do today).
+6. **If neither pull-and-restart nor rollback recovers the box**, the
+   build/sync step itself may have wedged `APP_PATH`. Read
+   `$HOME/.noc-snapshots/pre-<action>-<ts>/` via `tail-logs`-style SSH to
+   inspect the prior good state, and escalate to the CEO with a specific
+   request (e.g. manual hPanel *Git → Pull from GitHub* button push, or a
+   board-side `rsync` from the snapshot back to `APP_PATH`).
 
 ---
 
