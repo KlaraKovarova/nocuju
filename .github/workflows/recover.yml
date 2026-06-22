@@ -305,6 +305,25 @@ jobs:
             # tmp/restart.txt (same channel Hostinger's normal deploy uses).
             #
             # Repo is public, so anonymous HTTPS clone works without secrets.
+
+            # Non-login SSH on Hostinger Business has no node/npm in PATH —
+            # CloudLinux NodeJS Selector installs them under
+            # /opt/alt/alt-nodejs<MAJOR>/root/usr/bin/. Probe newest-first.
+            node_bin=""
+            for d in $(ls -d /opt/alt/alt-nodejs*/root/usr/bin 2>/dev/null \
+                         | sort -V -r); do
+              if [ -x "$d/node" ] && [ -x "$d/npm" ]; then
+                node_bin="$d"
+                break
+              fi
+            done
+            if [ -z "$node_bin" ]; then
+              echo "::error::no /opt/alt/alt-nodejs*/root/usr/bin/{node,npm} found"
+              exit 1
+            fi
+            export PATH="$node_bin:$PATH"
+            echo "using_node=$(node --version) npm=$(npm --version) path=$node_bin"
+
             SRC="$HOME/.noc-src"
             echo "=== $ACTION → $TARGET_REF ==="
 
