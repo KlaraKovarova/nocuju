@@ -147,6 +147,17 @@ jobs:
           ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" "
             set +e
             cd \"$APP_PATH\"
+            export PATH=/opt/alt/alt-nodejs20/root/usr/bin:\$PATH
+            echo '=== node --version ==='
+            node --version || true
+            echo
+            echo '=== curl localhost loopback probes ==='
+            for p in 3000 8080 \${PORT:-} ; do
+              [ -n \"\$p\" ] || continue
+              code=\$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \"http://127.0.0.1:\$p/api/health/version\" 2>/dev/null || echo TIMEOUT)
+              echo \"port \$p -> \$code\"
+            done
+            echo
             echo '=== running node processes ==='
             ps -fu \$(id -u) | grep -E '[n]ode|server\\.js' || echo 'no node procs'
             echo
@@ -183,6 +194,9 @@ jobs:
             echo
             echo '=== server.js head ==='
             head -20 server.js
+            echo
+            echo '=== timeout 10 node server.js (manual launch, captures stdout+stderr) ==='
+            ( timeout --foreground 10 node server.js 2>&1 ) | head -120 || echo manual node exit: \$?
           "
 
       - name: verify-deploy
