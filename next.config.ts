@@ -15,6 +15,13 @@ function resolveBuildCommitSha(): string {
 }
 
 const nextConfig: NextConfig = {
+  // Hostinger Business builds with output: 'standalone' regardless of what we
+  // declare here — the deployed artifact tree on the box only contains the
+  // standalone wrapper (.next/standalone/server.js) + .next/static + public.
+  // Declaring it explicitly keeps local builds in sync with prod and lets the
+  // postbuild patch (scripts/patch-standalone-server.mjs) find the generated
+  // server.js to harden its PORT parsing for Phusion Passenger. See NOC-64.
+  output: "standalone",
   env: {
     BUILD_COMMIT_SHA: resolveBuildCommitSha(),
     BUILD_TIME: new Date().toISOString(),
