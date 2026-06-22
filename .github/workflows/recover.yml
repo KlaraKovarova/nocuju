@@ -121,8 +121,21 @@ jobs:
         run: |
           set -eu
           LINES_INT="${LINES:-200}"
+          # Hostinger writes the Node runtime logs as siblings of server.js in
+          # the application root (console.log, stderr.log), not under a nested
+          # nodejs/ directory. Tail both, plus the legacy stdout.log path in
+          # case the layout differs on other plans.
           ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
-            "cd \"$APP_PATH\" && echo '=== stderr.log (last '$LINES_INT' lines) ===' && (tail -n $LINES_INT nodejs/stderr.log 2>/dev/null || echo '(no stderr.log)') && echo '=== stdout.log (last '$LINES_INT' lines) ===' && (tail -n $LINES_INT nodejs/stdout.log 2>/dev/null || echo '(no stdout.log)')"
+            env APP_PATH="$APP_PATH" LINES_INT="$LINES_INT" bash -se <<'EOF'
+            set -eu
+            cd "$APP_PATH"
+            for f in stderr.log console.log stdout.log nodejs/stderr.log nodejs/stdout.log; do
+              [ -f "$f" ] || continue
+              echo "=== $f (last $LINES_INT lines) ==="
+              tail -n "$LINES_INT" "$f" || true
+              echo
+            done
+          EOF
 
       - name: verify-deploy
         if: inputs.action == 'verify-deploy'
@@ -131,8 +144,20 @@ jobs:
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
           PORT: ${{ steps.load_ssh.outputs.port }}
+          PROD_BASE_URL: "https://www.nocuju.cz"
         run: |
           set -eu
+          # Primary source of truth on Hostinger's managed Node hosting:
+          # /api/health/version. The build inlines NEXT_PUBLIC_COMMIT_SHA so
+          # the running app reports its own SHA — works even when the box has
+          # no .git checkout (Hostinger ships build artifacts, not the repo).
+          echo "--- HTTP /api/health/version ---"
+          if ! curl -fsS --max-time 10 "$PROD_BASE_URL/api/health/version"; then
+            echo
+            echo "::warning::HTTP /api/health/version failed — the app may be down."
+          fi
+          echo
+          echo "--- SSH box state ---"
           ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
             env APP_PATH="$APP_PATH" bash -se <<'EOF'
             set -eu
