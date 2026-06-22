@@ -37,7 +37,10 @@ concurrency:
 jobs:
   recover:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 25 min — pull-and-restart/rollback do npm ci + next build on the
+    # Hostinger box, which routinely takes 3-6 min there + rsync overhead.
+    # The previous 10-min cap killed runs mid-rsync and corrupted APP_PATH.
+    timeout-minutes: 25
     steps:
       - name: Verify required secrets
         env:
@@ -345,16 +348,24 @@ jobs:
             SRC="$HOME/.noc-src"
             echo "=== $ACTION → $TARGET_REF ==="
 
-            if [ ! -d "$SRC/.git" ]; then
-              echo "first run: cloning $REPO_URL → $SRC"
+            # If a prior run was killed mid-build (e.g. GH Actions job timeout),
+            # $SRC may exist without a usable .git, or with locked refs. Heal
+            # by re-cloning from scratch — small cost vs. risk of building from
+            # corrupt state.
+            if [ ! -d "$SRC/.git" ] || ! git -C "$SRC" rev-parse HEAD >/dev/null 2>&1; then
+              echo "src checkout missing or broken: re-cloning $REPO_URL → $SRC"
               rm -rf "$SRC"
               git clone --no-tags "$REPO_URL" "$SRC"
             fi
 
             cd "$SRC"
             git remote set-url origin "$REPO_URL"
+            # Clear any lockfiles a killed git/npm process may have left behind.
+            rm -f .git/index.lock .git/HEAD.lock 2>/dev/null || true
             git fetch --prune --no-tags origin
             git -c advice.detachedHead=false checkout --force --detach "$TARGET_REF"
+            # Drop any untracked junk a prior killed build left in the worktree.
+            git clean -fdx -e node_modules -e .next
             SRC_SHA=$(git rev-parse HEAD)
             echo "src_sha=$SRC_SHA"
 
