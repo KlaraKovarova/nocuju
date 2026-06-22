@@ -133,8 +133,38 @@ jobs:
           PORT: ${{ steps.load_ssh.outputs.port }}
         run: |
           set -eu
-          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
-            "cd \"$APP_PATH\" && echo 'deployed_sha='\$(git rev-parse HEAD) && echo 'deployed_branch='\$(git rev-parse --abbrev-ref HEAD) && echo 'last_deploy_log:' && (git log -1 --format='%H %ci %s')"
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
+            set -eu
+            # Auto-discover the deployed git checkout. Hostinger's "Pull from
+            # GitHub" feature drops .git at different paths depending on plan,
+            # so we check APP_PATH first, then walk up, then sniff $HOME.
+            sha=""
+            found_at=""
+            for candidate in "$APP_PATH" "$(dirname "$APP_PATH")" "$(dirname "$(dirname "$APP_PATH")")" "$HOME"; do
+              [ -d "$candidate/.git" ] || continue
+              s=$(git -C "$candidate" rev-parse HEAD 2>/dev/null || true)
+              if [ -n "$s" ]; then sha="$s"; found_at="$candidate"; break; fi
+            done
+
+            if [ -z "$sha" ]; then
+              # No git checkout reachable. Fall back to listing what's there
+              # so the agent can decide how to fix the deploy plumbing.
+              echo "deploy_mode=no_git_checkout"
+              echo "--- ls -la \$APP_PATH ---"
+              ls -la "$APP_PATH" 2>/dev/null | head -40 || echo "(APP_PATH not readable)"
+              echo "--- candidate .git locations under HOME ---"
+              find "$HOME" -maxdepth 4 -name .git -type d 2>/dev/null | head -10 || true
+              exit 0
+            fi
+
+            echo "deploy_mode=git_checkout"
+            echo "deployed_sha=$sha"
+            echo "deployed_path=$found_at"
+            branch=$(git -C "$found_at" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+            echo "deployed_branch=$branch"
+            echo "last_commit:"
+            git -C "$found_at" log -1 --format='%H %ci %s' || true
+          EOF
 
       - name: pull-and-restart
         if: inputs.action == 'pull-and-restart'
