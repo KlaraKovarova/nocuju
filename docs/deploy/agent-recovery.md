@@ -129,27 +129,38 @@ hasn't completed the one-time setup yet.
 Hostinger's *Node.js → Pull from GitHub* drops only the built artifacts into
 `APP_PATH` (`server.js`, `.next/`, `node_modules/`, `package.json`, `public/`)
 — **never `.git/`**. So neither action can `git fetch` from `APP_PATH`. Both
-actions instead share a single body that:
+actions share four steps that build on the GitHub Actions runner and ship the
+result over SSH:
 
-1. Maintains a sibling source checkout at `$HOME/.noc-src` (clones the public
-   GitHub repo on first run, fetches+checks out the target ref on subsequent
-   runs). `pull-and-restart` targets `origin/main`; `rollback` targets the
-   explicit `target_sha`.
-2. Runs `NODE_ENV=production npm ci && npm run build` in `$HOME/.noc-src`. The
+1. **Resolve target ref.** `pull-and-restart` targets `main`; `rollback`
+   targets the explicit `target_sha`. The job-level `actions/checkout@v4`
+   checks out exactly that ref.
+2. **Build on the CI runner.** `actions/setup-node@v4` with `node-version: '22'`
+   matches the runtime, then `npm ci && npm run build` produces the standalone
+   tree at `.next/standalone/` plus `.next/static/` and `public/`. The
    postbuild step patches `.next/standalone/server.js` for Phusion Passenger
    (NOC-64). `BUILD_COMMIT_SHA` is exported so `/api/health/version` reports
    the SHA we just deployed.
-3. Takes a hardlinked snapshot of `APP_PATH` at
-   `$HOME/.noc-snapshots/pre-<action>-<ts>/` (cheap; last 5 retained) for
-   forensic recovery.
-4. Rsyncs the standalone tree into `APP_PATH` with `--delete`, excluding
-   runtime files we must preserve (`tmp/`, `*.log`, `nodejs/`, `.env*`,
-   `.noc-deploy-sha`, and `.next/static/` which is synced separately). Then
-   rsyncs `.next/static/` and `public/` separately with `--delete`.
-5. Writes `$APP_PATH/.noc-deploy-sha` so `verify-deploy` can report what was
-   last deployed (we have no `.git` to inspect on the box).
-6. `touch tmp/restart.txt` — same restart channel Hostinger uses for its
-   own deploys.
+
+   *Why not build on Hostinger?* The CloudLinux user cgroup caps `nproc` low
+   enough in a regular SSH shell that `next build` (Turbopack OR webpack)
+   fails at worker spawn with `ERR_WORKER_INIT_FAILED` / `EAGAIN`. hPanel's
+   internal deploy worker runs with a relaxed cgroup so its own pulls build
+   fine, but agents can't reach that channel. The CI runner has the resources
+   Next needs and produces a portable Linux/x64 standalone tree.
+3. **Snapshot and rsync.** A short SSH session takes a hardlinked snapshot of
+   `APP_PATH` at `$HOME/.noc-snapshots/pre-<action>-<ts>/` (cheap; last 5
+   retained) for forensic recovery. Then three rsync-over-SSH calls ship:
+   - `.next/standalone/` → `APP_PATH/` with `--delete` (excludes
+     `tmp/`, `*.log`, `nodejs/`, `.env*`, `.noc-deploy-sha`,
+     `.next/static/`, `public/` so we don't blow away runtime files or the
+     trees synced below)
+   - `.next/static/` → `APP_PATH/.next/static/` with `--delete`
+   - `public/` → `APP_PATH/public/` with `--delete`
+4. **Mark + restart.** A final SSH session writes `$APP_PATH/.noc-deploy-sha`
+   (so `verify-deploy` can report what was last deployed without a `.git`),
+   then `touch tmp/restart.txt` — the same restart channel Hostinger uses for
+   its own deploys.
 
 This sidesteps Hostinger's webhook-based pull mechanism entirely while still
 producing the exact layout that the platform's Node app expects.

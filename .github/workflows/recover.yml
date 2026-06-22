@@ -270,9 +270,74 @@ jobs:
           EOF
 
       # pull-and-restart and rollback share one body. They differ only in the
-      # git ref we sync: origin/main vs. an explicit SHA. See NOC-65 for the
-      # design (build in $HOME/.noc-src, rsync standalone tree into APP_PATH).
-      - name: deploy-ref (pull-and-restart / rollback)
+      # git ref to deploy: main vs. an explicit SHA. See NOC-65 for the design
+      # (build on the CI runner, rsync the standalone tree into APP_PATH).
+      #
+      # Why the build runs on the CI runner instead of on Hostinger:
+      # Hostinger Business' CloudLinux user cgroup nproc/threads cap is low
+      # enough in a regular SSH shell that `next build` (Turbopack OR webpack)
+      # fails at worker spawn with `ERR_WORKER_INIT_FAILED` / `EAGAIN`. hPanel's
+      # built-in deploy worker runs with a relaxed cgroup so its own pulls
+      # build fine, but we have no access to that channel via SSH. The CI
+      # runner has the resources Next needs and produces a portable Linux/x64
+      # standalone tree we can simply rsync into APP_PATH.
+      - name: deploy-ref - resolve target
+        if: inputs.action == 'pull-and-restart' || inputs.action == 'rollback'
+        id: deploy_target
+        env:
+          ACTION: ${{ inputs.action }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -eu
+          if [ "$ACTION" = "rollback" ] && [ -z "${TARGET_SHA:-}" ]; then
+            echo "::error::rollback requires -f target_sha=<sha>"
+            exit 1
+          fi
+          if [ "$ACTION" = "pull-and-restart" ]; then
+            REF=main
+          else
+            REF="$TARGET_SHA"
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "target ref: $REF"
+
+      - name: deploy-ref - checkout
+        if: inputs.action == 'pull-and-restart' || inputs.action == 'rollback'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.deploy_target.outputs.ref }}
+          fetch-depth: 1
+
+      - name: deploy-ref - setup node
+        if: inputs.action == 'pull-and-restart' || inputs.action == 'rollback'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: deploy-ref - build standalone
+        if: inputs.action == 'pull-and-restart' || inputs.action == 'rollback'
+        env:
+          # Bake the committed SHA so /api/health/version reports what we
+          # actually deployed (NOC-54). actions/checkout leaves HEAD at the
+          # resolved ref, so git rev-parse HEAD is the right value.
+          NODE_ENV: production
+        run: |
+          set -eu
+          BUILD_COMMIT_SHA=$(git rev-parse HEAD)
+          export BUILD_COMMIT_SHA
+          echo "src_sha=$BUILD_COMMIT_SHA"
+          npm ci --prefer-offline --no-audit --no-fund
+          # npm run build runs the postbuild patch (NOC-64).
+          npm run build
+          if [ ! -f .next/standalone/server.js ]; then
+            echo "::error::expected .next/standalone/server.js after build"
+            ls -la .next/ || true
+            exit 1
+          fi
+          echo "src_sha=$BUILD_COMMIT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: deploy-ref - rsync to APP_PATH + restart
         if: inputs.action == 'pull-and-restart' || inputs.action == 'rollback'
         env:
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
@@ -280,120 +345,18 @@ jobs:
           APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
           PORT: ${{ steps.load_ssh.outputs.port }}
           ACTION: ${{ inputs.action }}
-          TARGET_SHA: ${{ inputs.target_sha }}
-          REPO_URL: "https://github.com/${{ github.repository }}.git"
         run: |
           set -eu
-          if [ "$ACTION" = "rollback" ] && [ -z "${TARGET_SHA:-}" ]; then
-            echo "::error::rollback requires -f target_sha=<sha>"
-            exit 1
-          fi
-          # pull-and-restart syncs origin/main; rollback syncs the given SHA.
-          if [ "$ACTION" = "pull-and-restart" ]; then
-            TARGET_REF="origin/main"
-          else
-            TARGET_REF="$TARGET_SHA"
-          fi
-          # Positional args (`bash -s --`) instead of `env VAR=val` — Hostinger's
-          # shared sshd intermittently drops sessions when multiple env vars are
-          # set in the exec request; positional args are reliable.
-          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
-            bash -se -- "$APP_PATH" "$REPO_URL" "$TARGET_REF" "$ACTION" <<'EOF'
+          SRC_SHA=$(git rev-parse HEAD)
+
+          SSH_BASE="ssh -i $HOME/.ssh/id_recover -p $PORT -o BatchMode=yes"
+
+          # Cheap point-in-time snapshot of APP_PATH (hardlinked) so a broken
+          # deploy can be inspected or manually reverted. Keep last 5.
+          $SSH_BASE "$USER@$HOST" \
+            bash -se -- "$APP_PATH" "$ACTION" <<'PRESNAP'
             set -eu
-            APP_PATH="$1"; REPO_URL="$2"; TARGET_REF="$3"; ACTION="$4"
-
-            # Hostinger Business' "Pull from GitHub" feature does not ship .git
-            # into APP_PATH — only build artifacts (server.js, .next/,
-            # node_modules/, public/, package.json). So we can't `git fetch`
-            # from APP_PATH (NOC-65). Instead we maintain a sibling source
-            # checkout in $HOME/.noc-src that we use as a build host, then
-            # rsync the standalone tree into APP_PATH and signal restart via
-            # tmp/restart.txt (same channel Hostinger's normal deploy uses).
-            #
-            # Repo is public, so anonymous HTTPS clone works without secrets.
-
-            # Non-login SSH on Hostinger Business has no node/npm in PATH —
-            # CloudLinux NodeJS Selector installs them under
-            # /opt/alt/alt-nodejs<MAJOR>/root/usr/bin/. We must match the
-            # runtime's selected major (newest-available isn't safe: building
-            # with node 24 on this kernel SIGABRTs under the user's cgroup
-            # memory cap). Probe order:
-            #   1) major of the currently-running server.js node (best match
-            #      for the version hPanel was configured to use)
-            #   2) 22, 20, 18 (current → older LTS), then any installed
-            preferred=""
-            for pid in $(pgrep -u "$(id -u)" -f 'server.js' 2>/dev/null); do
-              exe=$(readlink "/proc/$pid/exe" 2>/dev/null || true)
-              m=$(printf '%s' "$exe" | sed -nE 's|.*alt-nodejs([0-9]+).*|\1|p')
-              if [ -n "$m" ]; then preferred="$m"; break; fi
-            done
-            node_bin=""
-            for major in $preferred 22 20 18 \
-                         $(ls -d /opt/alt/alt-nodejs*/root 2>/dev/null \
-                           | sed -nE 's|.*alt-nodejs([0-9]+).*|\1|p' \
-                           | sort -V -r); do
-              d="/opt/alt/alt-nodejs${major}/root/usr/bin"
-              if [ -x "$d/node" ] && [ -x "$d/npm" ]; then
-                node_bin="$d"
-                break
-              fi
-            done
-            if [ -z "$node_bin" ]; then
-              echo "::error::no /opt/alt/alt-nodejs*/root/usr/bin/{node,npm} found"
-              exit 1
-            fi
-            export PATH="$node_bin:$PATH"
-            echo "using_node=$(node --version) npm=$(npm --version) path=$node_bin runtime_pref=${preferred:-none}"
-
-            SRC="$HOME/.noc-src"
-            echo "=== $ACTION → $TARGET_REF ==="
-
-            # If a prior run was killed mid-build (e.g. GH Actions job timeout),
-            # $SRC may exist without a usable .git, or with locked refs. Heal
-            # by re-cloning from scratch — small cost vs. risk of building from
-            # corrupt state.
-            if [ ! -d "$SRC/.git" ] || ! git -C "$SRC" rev-parse HEAD >/dev/null 2>&1; then
-              echo "src checkout missing or broken: re-cloning $REPO_URL → $SRC"
-              rm -rf "$SRC"
-              git clone --no-tags "$REPO_URL" "$SRC"
-            fi
-
-            cd "$SRC"
-            git remote set-url origin "$REPO_URL"
-            # Clear any lockfiles a killed git/npm process may have left behind.
-            rm -f .git/index.lock .git/HEAD.lock 2>/dev/null || true
-            git fetch --prune --no-tags origin
-            git -c advice.detachedHead=false checkout --force --detach "$TARGET_REF"
-            # Drop any untracked junk a prior killed build left in the worktree.
-            git clean -fdx -e node_modules -e .next
-            SRC_SHA=$(git rev-parse HEAD)
-            echo "src_sha=$SRC_SHA"
-
-            # Build. BUILD_COMMIT_SHA is baked into the standalone bundle so
-            # /api/health/version reports what we actually deployed.
-            #
-            # We force --webpack instead of the default Turbopack because
-            # Turbopack's worker_threads init hits ERR_WORKER_INIT_FAILED /
-            # EAGAIN under the SSH user context on Hostinger Business — the
-            # user cgroup nproc cap is lower in a regular SSH shell than in
-            # hPanel's managed deploy worker. Webpack uses a single process
-            # and is unaffected.
-            #
-            # Since we bypass `npm run build`, we run the standalone-server
-            # patch (NOC-64 — Phusion's non-int PORT) explicitly afterwards.
-            export BUILD_COMMIT_SHA="$SRC_SHA"
-            NODE_ENV=production npm ci --prefer-offline --no-audit --no-fund
-            npx --no-install next build --webpack
-            node scripts/patch-standalone-server.mjs
-
-            if [ ! -f "$SRC/.next/standalone/server.js" ]; then
-              echo "::error::expected $SRC/.next/standalone/server.js after build; standalone build failed"
-              ls -la "$SRC/.next/" || true
-              exit 1
-            fi
-
-            # Cheap point-in-time snapshot of APP_PATH (hardlinked) so a broken
-            # deploy can be inspected or manually reverted. Keep last 5.
+            APP_PATH="$1"; ACTION="$2"
             ts=$(date -u +%Y%m%dT%H%M%SZ)
             mkdir -p "$HOME/.noc-snapshots"
             SNAP="$HOME/.noc-snapshots/pre-${ACTION}-${ts}"
@@ -401,41 +364,46 @@ jobs:
             echo "pre_state_snapshot=$SNAP"
             ls -1dt "$HOME"/.noc-snapshots/pre-* 2>/dev/null \
               | tail -n +6 | xargs -r rm -rf
+          PRESNAP
 
-            # 1) Sync standalone tree to APP_PATH (server.js, package.json,
-            #    node_modules/, .next/server/, required-server-files.json).
-            #    --delete removes stale files from prior builds, but the
-            #    excludes preserve runtime artifacts (logs, tmp, env) and
-            #    .next/static which we sync separately below.
-            rsync -a --delete \
-              --exclude='/.next/static/' \
-              --exclude='/public/' \
-              --exclude='/tmp/' \
-              --exclude='/console.log' \
-              --exclude='/stderr.log' \
-              --exclude='/*.log' \
-              --exclude='/nodejs/' \
-              --exclude='/.env' \
-              --exclude='/.env.*' \
-              --exclude='/.noc-deploy-sha' \
-              "$SRC/.next/standalone/" "$APP_PATH/"
+          # 1) Sync standalone tree to APP_PATH (server.js, package.json,
+          #    node_modules/, .next/server/, required-server-files.json).
+          #    --delete removes stale files from prior builds; excludes preserve
+          #    runtime artifacts (logs, tmp, env) and .next/static + public
+          #    which we sync separately below.
+          rsync -a --delete -e "$SSH_BASE" \
+            --exclude='/.next/static/' \
+            --exclude='/public/' \
+            --exclude='/tmp/' \
+            --exclude='/console.log' \
+            --exclude='/stderr.log' \
+            --exclude='/*.log' \
+            --exclude='/nodejs/' \
+            --exclude='/.env' \
+            --exclude='/.env.*' \
+            --exclude='/.noc-deploy-sha' \
+            .next/standalone/ "$USER@$HOST:$APP_PATH/"
 
-            # 2) Static asset bundles (the browser fetches these from /_next/).
-            rsync -a --delete "$SRC/.next/static/" "$APP_PATH/.next/static/"
+          # 2) Static asset bundles (the browser fetches these from /_next/).
+          rsync -a --delete -e "$SSH_BASE" \
+            .next/static/ "$USER@$HOST:$APP_PATH/.next/static/"
 
-            # 3) public/ (favicon, images, robots.txt, etc.).
-            rsync -a --delete "$SRC/public/" "$APP_PATH/public/"
+          # 3) public/ (favicon, images, robots.txt, etc.).
+          rsync -a --delete -e "$SSH_BASE" \
+            public/ "$USER@$HOST:$APP_PATH/public/"
 
-            # 4) Marker file lets verify-deploy report what was last deployed,
-            #    since APP_PATH has no .git to inspect.
-            echo "$SRC_SHA" > "$APP_PATH/.noc-deploy-sha"
-
-            # 5) Signal Phusion Passenger to restart with the new bundle.
+          # 4) Marker + restart signal. The marker lets verify-deploy report
+          #    what we last deployed (APP_PATH has no .git to inspect).
+          $SSH_BASE "$USER@$HOST" \
+            bash -se -- "$APP_PATH" "$SRC_SHA" <<'RESTART'
+            set -eu
+            APP_PATH="$1"; SRC_SHA="$2"
+            printf '%s\n' "$SRC_SHA" > "$APP_PATH/.noc-deploy-sha"
             mkdir -p "$APP_PATH/tmp"
             touch "$APP_PATH/tmp/restart.txt"
             echo "deployed_sha=$SRC_SHA"
             echo "restart_signalled"
-          EOF
+          RESTART
 
       - name: db-schema-push
         if: inputs.action == 'db-schema-push'
