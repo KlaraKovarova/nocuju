@@ -58,9 +58,11 @@ jobs:
           fi
 
       - name: Load SSH key
+        id: load_ssh
         env:
           KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          PORT_OVERRIDE: ${{ secrets.HOSTINGER_SSH_PORT }}
         run: |
           set -eu
           mkdir -p ~/.ssh
@@ -80,19 +82,33 @@ jobs:
           # Diagnostic: ensure HOST is a bare hostname, not user@host or host:port.
           case "$HOST" in
             *@*) echo "::error::HOSTINGER_SSH_HOST contains '@' — it should be just the hostname (paste user part into HOSTINGER_SSH_USER)." ; exit 1 ;;
-            *:*) echo "::error::HOSTINGER_SSH_HOST contains ':' — strip any port suffix. Custom ports are not supported yet." ; exit 1 ;;
+            *:*) echo "::error::HOSTINGER_SSH_HOST contains ':' — strip any port suffix and set HOSTINGER_SSH_PORT instead." ; exit 1 ;;
             */*) echo "::error::HOSTINGER_SSH_HOST contains '/' — paste just the hostname, not a URL." ; exit 1 ;;
           esac
-          # Surface ssh-keyscan errors instead of silencing them.
-          if ! ssh-keyscan -T 10 -H "$HOST" >> ~/.ssh/known_hosts 2> /tmp/keyscan.err; then
-            echo "::error::ssh-keyscan failed for the configured HOSTINGER_SSH_HOST."
-            echo "stderr (host value itself is masked by Actions):"
+          # Detect the SSH port. Try, in order:
+          #   1. HOSTINGER_SSH_PORT secret if set (explicit override).
+          #   2. 65002 — Hostinger Business/Premium shared hosting standard.
+          #   3. 22 — generic default (Hostinger VPS, custom setups).
+          detected_port=""
+          for port in ${PORT_OVERRIDE:-} 65002 22; do
+            [ -z "$port" ] && continue
+            if ssh-keyscan -T 5 -p "$port" -H "$HOST" >> ~/.ssh/known_hosts 2> /tmp/keyscan.err; then
+              detected_port="$port"
+              break
+            fi
+          done
+          if [ -z "$detected_port" ]; then
+            echo "::error::ssh-keyscan failed on every candidate port (override=${PORT_OVERRIDE:-none}, 65002, 22)."
+            echo "stderr from the last attempt (host value is masked by Actions):"
             cat /tmp/keyscan.err
-            echo "Likely cause: SSH not enabled on the Hostinger box yet, or HOSTINGER_SSH_HOST"
-            echo "is wrong. Confirm in hPanel → Advanced → SSH Access that SSH is enabled and"
-            echo "copy the host shown there exactly."
+            echo "Likely causes:"
+            echo "  - SSH not enabled in hPanel → Advanced → SSH Access yet."
+            echo "  - HOSTINGER_SSH_HOST is wrong (use the host shown in hPanel, no user@)."
+            echo "  - Non-standard port: set HOSTINGER_SSH_PORT to the value shown in hPanel."
             exit 1
           fi
+          echo "Using SSH port: $detected_port"
+          echo "port=$detected_port" >> "$GITHUB_OUTPUT"
 
       - name: tail-logs
         if: inputs.action == 'tail-logs'
@@ -100,11 +116,12 @@ jobs:
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PORT: ${{ steps.load_ssh.outputs.port }}
           LINES: ${{ inputs.lines }}
         run: |
           set -eu
           LINES_INT="${LINES:-200}"
-          ssh -i ~/.ssh/id_recover -o BatchMode=yes "$USER@$HOST" \
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
             "cd \"$APP_PATH\" && echo '=== stderr.log (last '$LINES_INT' lines) ===' && (tail -n $LINES_INT nodejs/stderr.log 2>/dev/null || echo '(no stderr.log)') && echo '=== stdout.log (last '$LINES_INT' lines) ===' && (tail -n $LINES_INT nodejs/stdout.log 2>/dev/null || echo '(no stdout.log)')"
 
       - name: verify-deploy
@@ -113,9 +130,10 @@ jobs:
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PORT: ${{ steps.load_ssh.outputs.port }}
         run: |
           set -eu
-          ssh -i ~/.ssh/id_recover -o BatchMode=yes "$USER@$HOST" \
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
             "cd \"$APP_PATH\" && echo 'deployed_sha='\$(git rev-parse HEAD) && echo 'deployed_branch='\$(git rev-parse --abbrev-ref HEAD) && echo 'last_deploy_log:' && (git log -1 --format='%H %ci %s')"
 
       - name: pull-and-restart
@@ -124,9 +142,10 @@ jobs:
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PORT: ${{ steps.load_ssh.outputs.port }}
         run: |
           set -eu
-          ssh -i ~/.ssh/id_recover -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
             set -eu
             cd "$APP_PATH"
             echo 'before_sha='$(git rev-parse HEAD)
@@ -146,9 +165,10 @@ jobs:
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PORT: ${{ steps.load_ssh.outputs.port }}
         run: |
           set -eu
-          ssh -i ~/.ssh/id_recover -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
             set -eu
             cd "$APP_PATH"
             # drizzle-kit reads DATABASE_URL from process.env (see drizzle.config.ts).
@@ -185,9 +205,10 @@ jobs:
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PORT: ${{ steps.load_ssh.outputs.port }}
         run: |
           set -eu
-          ssh -i ~/.ssh/id_recover -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
             set -eu
             cd "$APP_PATH"
             for candidate in nodejs/.env .env .env.production "$HOME/.env"; do
@@ -219,6 +240,7 @@ jobs:
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PORT: ${{ steps.load_ssh.outputs.port }}
           TARGET_SHA: ${{ inputs.target_sha }}
         run: |
           set -eu
@@ -226,7 +248,7 @@ jobs:
             echo "::error::rollback requires -f target_sha=<sha>"
             exit 1
           fi
-          ssh -i ~/.ssh/id_recover -o BatchMode=yes "$USER@$HOST" bash -se <<EOF
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" bash -se <<EOF
             set -eu
             cd "$APP_PATH"
             echo 'before_sha='\$(git rev-parse HEAD)

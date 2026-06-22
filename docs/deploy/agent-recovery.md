@@ -171,7 +171,8 @@ Until this is done, recovery still requires hPanel. The board does this once.
    SSH keys*. Test once: `ssh -i ~/.ssh/noc-recovery <user>@<host> 'pwd'`.
 3. **Add four secrets** to GitHub → *Repo settings → Secrets and variables →
    Actions → New repository secret*:
-   - `HOSTINGER_SSH_HOST` — the host from step 1 (e.g. `145.x.y.z`).
+   - `HOSTINGER_SSH_HOST` — the host from step 1 (e.g. `145.x.y.z`). Just the
+     hostname — no `user@`, no `:port`, no scheme.
    - `HOSTINGER_SSH_USER` — the user from step 1 (e.g. `u123456789`).
    - `HOSTINGER_SSH_KEY` — paste the **private** key (the file without `.pub`).
    - `HOSTINGER_APP_PATH` — the Node app's *Application root* shown in hPanel
@@ -179,6 +180,12 @@ Until this is done, recovery still requires hPanel. The board does this once.
 4. **Delete the private key** from the board laptop after pasting (only the
    public copy remains, on Hostinger). The secret in GitHub is now the only
    live copy.
+
+**SSH port**: the workflow auto-detects the port — it tries the optional
+override secret `HOSTINGER_SSH_PORT` first, then `65002` (Hostinger Business /
+Premium shared standard), then `22` (VPS / custom setups). You only need to set
+`HOSTINGER_SSH_PORT` if your hPanel SSH line shows something other than 22 or
+65002.
 
 Verification from any laptop:
 
