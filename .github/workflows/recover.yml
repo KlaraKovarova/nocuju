@@ -369,13 +369,22 @@ jobs:
             SRC_SHA=$(git rev-parse HEAD)
             echo "src_sha=$SRC_SHA"
 
-            # Build. The postbuild step patches .next/standalone/server.js for
-            # Phusion Passenger's non-int PORT (NOC-64). BUILD_COMMIT_SHA is
-            # baked into the standalone bundle so /api/health/version reports
-            # what we actually deployed.
+            # Build. BUILD_COMMIT_SHA is baked into the standalone bundle so
+            # /api/health/version reports what we actually deployed.
+            #
+            # We force --webpack instead of the default Turbopack because
+            # Turbopack's worker_threads init hits ERR_WORKER_INIT_FAILED /
+            # EAGAIN under the SSH user context on Hostinger Business — the
+            # user cgroup nproc cap is lower in a regular SSH shell than in
+            # hPanel's managed deploy worker. Webpack uses a single process
+            # and is unaffected.
+            #
+            # Since we bypass `npm run build`, we run the standalone-server
+            # patch (NOC-64 — Phusion's non-int PORT) explicitly afterwards.
             export BUILD_COMMIT_SHA="$SRC_SHA"
             NODE_ENV=production npm ci --prefer-offline --no-audit --no-fund
-            npm run build
+            npx --no-install next build --webpack
+            node scripts/patch-standalone-server.mjs
 
             if [ ! -f "$SRC/.next/standalone/server.js" ]; then
               echo "::error::expected $SRC/.next/standalone/server.js after build; standalone build failed"
