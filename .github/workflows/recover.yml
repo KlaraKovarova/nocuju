@@ -351,20 +351,21 @@ jobs:
 
           SSH_BASE="ssh -i $HOME/.ssh/id_recover -p $PORT -o BatchMode=yes"
 
+          # Hostinger's shared sshd drops `bash -s` heredoc-driven sessions
+          # within ~1s of auth (likely a fail2ban-ish or PAM-quirk applied to
+          # non-interactive stdin pipes). Inline single-string exec — the same
+          # pattern tail-logs/diagnose use successfully — is reliable. We
+          # bake $APP_PATH and $ACTION in from the outer shell and escape $vars
+          # that should expand on the remote.
           # Cheap point-in-time snapshot of APP_PATH (hardlinked) so a broken
           # deploy can be inspected or manually reverted. Keep last 5.
-          $SSH_BASE "$USER@$HOST" \
-            bash -se -- "$APP_PATH" "$ACTION" <<'PRESNAP'
-            set -eu
-            APP_PATH="$1"; ACTION="$2"
-            ts=$(date -u +%Y%m%dT%H%M%SZ)
-            mkdir -p "$HOME/.noc-snapshots"
-            SNAP="$HOME/.noc-snapshots/pre-${ACTION}-${ts}"
-            cp -al "$APP_PATH" "$SNAP"
-            echo "pre_state_snapshot=$SNAP"
-            ls -1dt "$HOME"/.noc-snapshots/pre-* 2>/dev/null \
-              | tail -n +6 | xargs -r rm -rf
-          PRESNAP
+          $SSH_BASE "$USER@$HOST" "set -eu; \
+            ts=\$(date -u +%Y%m%dT%H%M%SZ); \
+            mkdir -p \"\$HOME/.noc-snapshots\"; \
+            SNAP=\"\$HOME/.noc-snapshots/pre-${ACTION}-\${ts}\"; \
+            cp -al \"$APP_PATH\" \"\$SNAP\"; \
+            echo \"pre_state_snapshot=\$SNAP\"; \
+            ls -1dt \"\$HOME\"/.noc-snapshots/pre-* 2>/dev/null | tail -n +6 | xargs -r rm -rf"
 
           # 1) Sync standalone tree to APP_PATH (server.js, package.json,
           #    node_modules/, .next/server/, required-server-files.json).
@@ -394,16 +395,12 @@ jobs:
 
           # 4) Marker + restart signal. The marker lets verify-deploy report
           #    what we last deployed (APP_PATH has no .git to inspect).
-          $SSH_BASE "$USER@$HOST" \
-            bash -se -- "$APP_PATH" "$SRC_SHA" <<'RESTART'
-            set -eu
-            APP_PATH="$1"; SRC_SHA="$2"
-            printf '%s\n' "$SRC_SHA" > "$APP_PATH/.noc-deploy-sha"
-            mkdir -p "$APP_PATH/tmp"
-            touch "$APP_PATH/tmp/restart.txt"
-            echo "deployed_sha=$SRC_SHA"
-            echo "restart_signalled"
-          RESTART
+          $SSH_BASE "$USER@$HOST" "set -eu; \
+            printf '%s\n' '$SRC_SHA' > \"$APP_PATH/.noc-deploy-sha\"; \
+            mkdir -p \"$APP_PATH/tmp\"; \
+            touch \"$APP_PATH/tmp/restart.txt\"; \
+            echo \"deployed_sha=$SRC_SHA\"; \
+            echo restart_signalled"
 
       - name: db-schema-push
         if: inputs.action == 'db-schema-push'
