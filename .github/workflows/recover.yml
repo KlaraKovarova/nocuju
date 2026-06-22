@@ -20,7 +20,6 @@ on:
           - db-bootstrap
           - db-schema-push
           - diagnose
-          - hot-patch-server
       lines:
         description: "tail-logs: number of log lines to print (default 200)"
         required: false
@@ -133,80 +132,6 @@ jobs:
           # with "exec request failed on channel 0". Single-string exec works.
           ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
             "cd \"$APP_PATH\" && for f in stderr.log console.log stdout.log nodejs/stderr.log nodejs/stdout.log; do [ -f \"\$f\" ] || continue; echo \"=== \$f (last $LINES_INT lines) ===\"; tail -n $LINES_INT \"\$f\" || true; echo; done"
-
-      - name: hot-patch-server
-        if: inputs.action == 'hot-patch-server'
-        env:
-          USER: ${{ secrets.HOSTINGER_SSH_USER }}
-          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
-          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
-          PORT: ${{ steps.load_ssh.outputs.port }}
-        # NOC-64 emergency lever. Hostinger's auto-pull on push to main was not
-        # firing within 20+ minutes of the fix landing (build artifacts in
-        # APP_PATH still mtime to the broken NOC-56 deploy). This action SSHes
-        # in and patches the stock Next.js standalone `server.js` in place so
-        # the supervisor can spawn a working process. Idempotent: skips if the
-        # NOC-64 marker is already present. The patch only changes the port
-        # parse + adds a one-line stderr startup diagnostic — the rest of the
-        # file is untouched. When Hostinger eventually pulls main, the
-        # `postbuild` hook produces an equivalent server.js and this hot patch
-        # becomes a no-op.
-        run: |
-          set -eu
-          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" "
-            set -e
-            cd \"$APP_PATH\"
-            if grep -q 'NOC-64: patched-port-parse' server.js 2>/dev/null; then
-              echo 'server.js already patched (NOC-64 marker present); only restarting'
-              touch tmp/restart.txt
-              exit 0
-            fi
-
-            cp server.js server.js.bak.noc64
-            python3 - <<'PY'
-import io, os, re, sys
-path = 'server.js'
-with open(path, 'r', encoding='utf-8') as f:
-    src = f.read()
-
-needle = 'const currentPort = parseInt(process.env.PORT, 10) || 3000'
-replacement = (
-    '// NOC-64: patched-port-parse\n'
-    'const __noc64_rawPort = process.env.PORT;\n'
-    'const __noc64_parsedPort = parseInt(__noc64_rawPort, 10);\n'
-    'const currentPort = Number.isFinite(__noc64_parsedPort)\n'
-    '  ? __noc64_parsedPort\n'
-    '  : (__noc64_rawPort && __noc64_rawPort.length > 0 ? __noc64_rawPort : 3000);\n'
-    'process.stderr.write(\n'
-    '  \"[noc startup] \" + JSON.stringify({\n'
-    '    rawPort: __noc64_rawPort == null ? null : __noc64_rawPort,\n'
-    '    boundTarget: currentPort,\n'
-    '    hostname: process.env.HOSTNAME == null ? null : process.env.HOSTNAME,\n'
-    '    nodeEnv: process.env.NODE_ENV == null ? null : process.env.NODE_ENV,\n'
-    '    passenger: Object.keys(process.env).filter(function (k) {\n'
-    '      return /^PASSENGER_/.test(k);\n'
-    '    }),\n'
-    '  }) + \"\\\\n\",\n'
-    ');'
-)
-if needle not in src:
-    print('ERROR: expected port-init needle not found in server.js')
-    sys.exit(2)
-out = src.replace(needle, replacement)
-if out == src:
-    print('ERROR: replace produced no change')
-    sys.exit(3)
-with open(path, 'w', encoding='utf-8') as f:
-    f.write(out)
-print('OK: server.js patched in place')
-PY
-
-            echo '--- patched server.js (head 30) ---'
-            head -30 server.js
-            echo
-            mkdir -p tmp && touch tmp/restart.txt
-            echo 'restart_signalled'
-          "
 
       - name: diagnose
         if: inputs.action == 'diagnose'
