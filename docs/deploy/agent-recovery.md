@@ -294,7 +294,70 @@ The agent's heartbeat runbook. Each step is a single command.
 
 ---
 
-## 5. Out of scope (handled elsewhere)
+## 5. Second deploy channel: Hostinger's native GitHub webhook
+
+The SSH workflow in §2 is the **primary** recovery channel — built, tested, in
+agent hands. It also bypasses Hostinger's webhook entirely (we build on the CI
+runner and rsync the standalone tree), so a flaky webhook never blocks recovery.
+
+In parallel, we keep Hostinger's native *pull-from-GitHub* webhook live as a
+**second channel**:
+
+- It is the only channel that re-uses Hostinger's own build worker (relaxed
+  cgroup → `next build` works without our CI runner). Useful if CI is degraded.
+- It runs without any GitHub Actions concurrency, so if Actions itself is
+  blocked (SSH outage to Hostinger, a CI secret rotated, a deploy gate stuck
+  in queue), the board can still ship by clicking *Git → Pull from GitHub* in
+  hPanel and the platform's own deploy worker handles it.
+- A board member without `gh` / repo-secret access can also trigger a deploy
+  from hPanel.
+
+This channel exists if and only if a GitHub → repo → *Webhooks* entry posts
+`push` events to Hostinger's hPanel-issued URL. Verify with:
+
+```bash
+gh api /repos/KlaraKovarova/nocuju/hooks
+```
+
+Look for an active hook whose `config.url` points at Hostinger and whose
+`last_response.code` is `200`. If the array is empty, the channel is dead —
+re-add it via the one-time setup below.
+
+### 5.1 One-time setup (board, hPanel + GitHub UI)
+
+The webhook URL embeds an opaque per-plan token only hPanel renders. There is
+no Hostinger API for the shared/Business Git integration (see §1 table), so
+this stays a credentialed human-UI step.
+
+1. hPanel → *Advanced → Git*. If the GitHub connection is missing, recreate it
+   per `docs/deploy/hostinger-business.md` §0. Toggle *Auto Deployment* on.
+   hPanel will surface a **webhook URL** and a **secret**.
+2. Copy both. GitHub → *Repo settings → Webhooks → Add webhook*:
+   - **Payload URL**: the URL from step 1.
+   - **Content type**: `application/json`.
+   - **Secret**: the secret from step 1 (paste exactly; trailing whitespace
+     will silently break HMAC verification on Hostinger's side).
+   - **Which events?**: *Just the push event*.
+   - **Active**: ✅.
+3. Push a no-op commit to `main` (e.g. whitespace in this doc) and watch
+   *Recent Deliveries* on the GitHub webhook page. Expect `200` within ~5 s.
+4. Verify the public hook record:
+
+   ```bash
+   gh api /repos/KlaraKovarova/nocuju/hooks \
+     --jq '.[] | {id, url: .config.url, code: .last_response.code, status: .last_response.status}'
+   ```
+
+   Expected: at least one entry with a Hostinger `url` and `code: 200`. The
+   record is also visible at GitHub → *Settings → Webhooks → Recent Deliveries*.
+
+If `last_response.code` is `200` but the deploy didn't land, the SSH channel in
+§4 step 4 (`pull-and-restart`) is the next move — Hostinger acknowledged the
+hook but its build worker failed.
+
+---
+
+## 6. Out of scope (handled elsewhere)
 
 - The current NOC-53 incident — board action required there separately.
 - Re-landing the migration verifier from NOC-52 — separate ticket once the box
