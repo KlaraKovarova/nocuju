@@ -352,6 +352,7 @@ jobs:
             #    .next/static which we sync separately below.
             rsync -a --delete \
               --exclude='/.next/static/' \
+              --exclude='/public/' \
               --exclude='/tmp/' \
               --exclude='/console.log' \
               --exclude='/stderr.log' \

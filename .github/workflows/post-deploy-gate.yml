@@ -24,6 +24,11 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # actions: write is required so the failure step can dispatch recover.yml
+    # (gh workflow run). The default GITHUB_TOKEN only has contents: read.
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
