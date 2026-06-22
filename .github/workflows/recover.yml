@@ -133,7 +133,8 @@ jobs:
           PORT: ${{ steps.load_ssh.outputs.port }}
         run: |
           set -eu
-          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
+            env APP_PATH="$APP_PATH" bash -se <<'EOF'
             set -eu
             # Auto-discover the deployed git checkout. Hostinger's "Pull from
             # GitHub" feature drops .git at different paths depending on plan,
@@ -175,7 +176,8 @@ jobs:
           PORT: ${{ steps.load_ssh.outputs.port }}
         run: |
           set -eu
-          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
+            env APP_PATH="$APP_PATH" bash -se <<'EOF'
             set -eu
             cd "$APP_PATH"
             echo 'before_sha='$(git rev-parse HEAD)
@@ -198,7 +200,8 @@ jobs:
           PORT: ${{ steps.load_ssh.outputs.port }}
         run: |
           set -eu
-          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
+            env APP_PATH="$APP_PATH" bash -se <<'EOF'
             set -eu
             cd "$APP_PATH"
             # drizzle-kit reads DATABASE_URL from process.env (see drizzle.config.ts).
@@ -238,7 +241,8 @@ jobs:
           PORT: ${{ steps.load_ssh.outputs.port }}
         run: |
           set -eu
-          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" bash -se <<'EOF'
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
+            env APP_PATH="$APP_PATH" bash -se <<'EOF'
             set -eu
             cd "$APP_PATH"
             for candidate in nodejs/.env .env .env.production "$HOME/.env"; do
