@@ -11,18 +11,42 @@ export default function Icon() {
           width: "100%",
           height: "100%",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#141414",
-          color: "#fafaf7",
-          fontFamily: "ui-sans-serif, system-ui, sans-serif",
-          fontSize: 28,
-          fontWeight: 700,
-          letterSpacing: "-0.04em",
-          borderRadius: 14,
+          position: "relative",
+          background: "#fafaf7",
         }}
       >
-        NOC
+        {/* Hora – tmavě zelený trojúhelník */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 4,
+            background: "#3a6b48",
+            clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
+          }}
+        />
+        {/* Přístřešek – střecha (světle šalvějová) */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: 4,
+            left: "29%",
+            right: "29%",
+            height: "29%",
+            background: "#cfd6b5",
+            clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
+          }}
+        />
+        {/* Přístřešek – stěny (teplá slonová kost) */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: 4,
+            left: "36%",
+            right: "36%",
+            height: "14%",
+            background: "#e6d4ba",
+          }}
+        />
       </div>
     ),
     { ...size },

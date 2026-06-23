@@ -5,15 +5,15 @@ import { SiteHeader } from "@/components/SiteHeader";
 
 import "./globals.css";
 
-const SITE_TITLE = "NOC — kde přespat venku v Česku";
+const SITE_TITLE = "nocuju.cz — útulny a nouzová nocoviště v ČR";
 const SITE_DESCRIPTION =
-  "Veřejně sdílená databáze útulen, srubů a nouzových nocovišť v Česku. Procházej seznam a filtruj na mapě.";
+  "Mapa a katalog volně přístupných útulen, srubů a nouzových nocovišť v Česku. Přespej v přírodě bez rezervací a poplatků.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://nocuju.cz"),
   title: {
     default: SITE_TITLE,
-    template: "%s — NOC",
+    template: "%s | nocuju.cz",
   },
   description: SITE_DESCRIPTION,
   openGraph: {
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     type: "website",
     locale: "cs_CZ",
-    siteName: "NOC",
+    siteName: "nocuju.cz",
   },
   twitter: {
     card: "summary_large_image",

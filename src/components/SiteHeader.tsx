@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { NocujuWordmark } from "./logo";
 import { SavedPlacesNavLink } from "./SavedPlacesNavLink";
 
 const NAV_ITEMS = [
@@ -14,13 +15,10 @@ export function SiteHeader() {
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 lg:px-8">
         <Link
           href="/"
-          className="flex items-baseline gap-2 text-xl font-semibold tracking-tight text-[var(--foreground)] hover:text-[var(--accent)]"
-          aria-label="NOC — domů"
+          className="text-xl font-semibold tracking-tight text-[var(--foreground)] hover:text-[var(--accent)]"
+          aria-label="nocuju.cz — domů"
         >
-          <span>NOC</span>
-          <span className="hidden text-xs font-normal uppercase tracking-[0.18em] text-[var(--foreground-muted)] sm:inline">
-            kde přespat venku
-          </span>
+          <NocujuWordmark iconSize={20} />
         </Link>
         <nav aria-label="Hlavní navigace">
           <ul className="flex items-center gap-1 sm:gap-2">
