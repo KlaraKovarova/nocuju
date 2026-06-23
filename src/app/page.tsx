@@ -22,6 +22,8 @@ type Tile = {
   blurb: string;
   palette: string;
   icon: React.ReactNode;
+  image?: string;
+  imageAlt?: string;
 };
 
 const TILES: Tile[] = [
@@ -33,6 +35,8 @@ const TILES: Tile[] = [
       "Otevřené dřevěnky, sruby a přístřešky volně dostupné každému turistovi.",
     palette: "from-emerald-800 via-emerald-700 to-emerald-900",
     icon: <CabinIcon />,
+    image: "/category-utulna.webp",
+    imageAlt: "Dřevěná horská útulna s pryčnami a kamnama",
   },
   {
     href: "/objevit?category=nouzove-nocoviste",
@@ -42,6 +46,8 @@ const TILES: Tile[] = [
       "Lean-to, ohniště a jednoduché přístřešky pro případ nepohody nebo nouze.",
     palette: "from-amber-700 via-amber-600 to-amber-800",
     icon: <TentIcon />,
+    image: "/category-nouzove.webp",
+    imageAlt: "Otevřený přístřešek v jehličnatém lese u ohniště",
   },
 ];
 
@@ -110,6 +116,16 @@ export default async function HomePage() {
                 aria-hidden
                 className={`absolute inset-0 bg-gradient-to-br ${tile.palette}`}
               />
+              {tile.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={tile.image}
+                  alt={tile.imageAlt ?? ""}
+                  aria-hidden={!tile.imageAlt}
+                  className="absolute inset-0 h-full w-full object-cover opacity-60 mix-blend-luminosity"
+                  loading="lazy"
+                />
+              ) : null}
               <div
                 aria-hidden
                 className="absolute inset-0 opacity-25 mix-blend-overlay"
@@ -211,43 +227,17 @@ function TentIcon() {
 function HeroIllustration() {
   return (
     <div className="relative h-full min-h-[360px] w-full overflow-hidden rounded-3xl border border-[var(--border)] bg-gradient-to-br from-emerald-900 via-emerald-800 to-slate-900">
-      <svg
-        viewBox="0 0 600 480"
-        className="absolute inset-0 h-full w-full"
-        preserveAspectRatio="xMidYMid slice"
-        aria-hidden
-      >
-        <defs>
-          <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0c1e1a" stopOpacity="0" />
-            <stop offset="100%" stopColor="#0c1e1a" stopOpacity="0.85" />
-          </linearGradient>
-        </defs>
-        <circle cx="470" cy="110" r="48" fill="#f5efe2" opacity="0.9" />
-        <circle cx="455" cy="100" r="48" fill="#0d2421" />
-        <path
-          d="M0 320 L120 220 L210 290 L320 180 L420 280 L520 230 L600 290 L600 480 L0 480 Z"
-          fill="#0a1a17"
-        />
-        <path
-          d="M0 360 L90 290 L180 340 L280 270 L380 330 L480 280 L600 340 L600 480 L0 480 Z"
-          fill="#08120f"
-          opacity="0.9"
-        />
-        <rect width="600" height="480" fill="url(#sky)" />
-        <g opacity="0.85" fill="#f5efe2">
-          <circle cx="80" cy="80" r="1.5" />
-          <circle cx="160" cy="60" r="1" />
-          <circle cx="240" cy="100" r="1.2" />
-          <circle cx="320" cy="50" r="1" />
-          <circle cx="380" cy="140" r="1.4" />
-          <circle cx="120" cy="160" r="1" />
-          <circle cx="540" cy="180" r="1" />
-        </g>
-      </svg>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/hero-utulna.webp"
+        alt="Dřevěná útulna v mlhavém horském lese za úsvitu"
+        className="absolute inset-0 h-full w-full object-cover"
+        loading="eager"
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
       <div className="absolute bottom-6 left-6 right-6 rounded-xl bg-black/30 px-4 py-3 text-sm text-white/90 backdrop-blur">
-        <p className="font-medium">Útulna pod Boubínem</p>
-        <p className="text-white/70">Šumava · 8 míst · WC</p>
+        <p className="font-medium">Útulna v horském lese</p>
+        <p className="text-white/70">Volně přístupná · bez rezervace</p>
       </div>
     </div>
   );
