@@ -104,7 +104,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const data = await loadPlace(slug);
-  if (!data) return { title: "Místo nenalezeno — NOC" };
+  if (!data) return { title: "Místo nenalezeno"  };
 
   const { place, location } = data;
   const subtitle = [location?.city, location?.region]
@@ -115,7 +115,7 @@ export async function generateMetadata({
     : `Místo k přespání: ${place.name}${subtitle ? ` (${subtitle})` : ""}.`;
 
   return {
-    title: `${place.name} — NOC`,
+    title: place.name,
     description,
     alternates: { canonical: `/misto/${place.slug}` },
     openGraph: {

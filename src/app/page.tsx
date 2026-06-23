@@ -97,7 +97,7 @@ export default async function HomePage() {
       <section className="mx-auto w-full max-w-7xl px-4 py-16 lg:px-8 lg:py-20">
         <header className="max-w-2xl">
           <h2 className="text-2xl font-semibold tracking-tight text-[var(--foreground)] sm:text-3xl">
-            Co najdeš v NOC
+            Co najdeš na nocuju.cz
           </h2>
           <p className="mt-3 text-base text-[var(--foreground-muted)]">
             Dvě hlavní kategorie míst k přespání venku. Procházej je podle typu

@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "O projektu",
   description:
-    "NOC je veřejně sdílený seznam míst k přespání venku v Česku — útulen, srubů a nouzových nocovišť. Data sbíráme z boudy.info a viaczechia.cz.",
+    "nocuju.cz je veřejně sdílený seznam míst k přespání venku v Česku — útulen, srubů a nouzových nocovišť. Data sbíráme z boudy.info a viaczechia.cz.",
 };
 
 export default function AboutPage() {
@@ -14,10 +14,10 @@ export default function AboutPage() {
         O projektu
       </p>
       <h1 className="mt-3 text-4xl font-semibold tracking-tight text-[var(--foreground)] sm:text-5xl">
-        NOC
+        nocuju.cz
       </h1>
       <p className="mt-6 text-lg leading-relaxed text-[var(--foreground-muted)]">
-        NOC sbírá veřejně známá místa k přespání venku v Česku — turistické
+        nocuju.cz sbírá veřejně známá místa k přespání venku v Česku — turistické
         útulny, sruby a nouzová nocoviště — a dává je na jedno přehledné místo.
         Cílem je, aby si turista, cyklista nebo poutník mohl rychle najít, kde
         přespat na trase.

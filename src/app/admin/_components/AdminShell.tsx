@@ -20,7 +20,7 @@ export function AdminShell({
               href="/admin/places"
               className="text-base font-semibold text-zinc-900"
             >
-              NOC · admin
+              nocuju · admin
             </Link>
             <nav className="flex items-center gap-3 text-sm">
               <Link

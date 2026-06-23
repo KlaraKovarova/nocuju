@@ -182,7 +182,7 @@ async function loadPlaces(filters: ParsedFilters): Promise<{
 }
 
 export const metadata = {
-  title: "Objevit útulny a nocoviště — NOC",
+  title: "Objevit útulny a nocoviště",
   description:
     "Procházej databázi turistických útulen, přístřešků a nouzových nocovišť v Česku. Filtruj podle kategorie, povrchu, WC a počtu míst.",
 };

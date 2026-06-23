@@ -86,7 +86,7 @@ async function loadAllPlaceCards(): Promise<PlaceCardData[]> {
 }
 
 export const metadata = {
-  title: "Moje místa — uložená nocoviště — NOC",
+  title: "Moje místa — uložená nocoviště",
   description:
     "Tvoje uložená místa k přespání. Klikni na srdíčko u kteréhokoli místa a uloží se sem na tomto zařízení.",
   robots: { index: false, follow: false },

@@ -151,7 +151,7 @@ async function loadMarkers(filters: ParsedFilters): Promise<MapaMarker[]> {
 }
 
 export const metadata = {
-  title: "Mapa míst k přespání — NOC",
+  title: "Mapa míst k přespání",
   description:
     "Interaktivní mapa turistických útulen, přístřešků a nouzových nocovišť v Česku. Filtruj podle kategorie, povrchu, WC a počtu míst.",
 };

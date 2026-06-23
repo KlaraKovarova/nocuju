@@ -105,7 +105,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const region = await findRegion(slug);
-  if (!region) return { title: "Oblast nenalezena — NOC" };
+  if (!region) return { title: "Oblast nenalezena"  };
 
   const description = `Útulny, sruby a nouzová nocoviště v oblasti ${region.name}. Najdi v ${region.name} ${region.count} ${pluralizeMista(region.count)} k přespání venku.`;
 

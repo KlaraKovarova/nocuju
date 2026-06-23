@@ -4,7 +4,7 @@ import { ImageResponse } from "next/og";
 import { db } from "@/db/client";
 import { locations, places } from "@/db/schema";
 
-export const alt = "NOC — místo k přespání";
+export const alt = "nocuju.cz — místo k přespání";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -36,7 +36,7 @@ export default async function Image({
 }) {
   const { slug } = await params;
   const data = await loadHero(slug);
-  const name = data?.name ?? "NOC — kde přespat venku";
+  const name = data?.name ?? "nocuju.cz — kde přespat venku";
   const subtitle = data
     ? [data.city, data.region].filter(Boolean).join(", ")
     : "Veřejně sdílená databáze míst k přespání";
@@ -57,33 +57,41 @@ export default async function Image({
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div
             style={{
+              position: "relative",
+              width: 48,
+              height: 48,
               display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 64,
-              height: 64,
-              background: "#fafaf7",
-              color: "#141414",
-              fontSize: 28,
-              fontWeight: 800,
-              letterSpacing: "-0.04em",
-              borderRadius: 14,
             }}
           >
-            NOC
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "#cfd6b5",
+                clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "#3a6b48",
+                clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
+                transform: "scale(0.82) translateY(-4px)",
+              }}
+            />
           </div>
           <div
             style={{
-              fontSize: 20,
-              letterSpacing: "0.22em",
-              textTransform: "uppercase",
-              opacity: 0.75,
+              fontSize: 24,
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
             }}
           >
-            kde přespat venku
+            nocuju.cz
           </div>
         </div>
 

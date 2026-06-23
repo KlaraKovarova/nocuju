@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "NOC — kde přespat venku v Česku";
+export const alt = "nocuju.cz — útulny a nouzová nocoviště v ČR";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -22,32 +22,41 @@ export default function OpengraphImage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          {/* Horská ikona — nocuju.cz */}
           <div
             style={{
+              position: "relative",
+              width: 56,
+              height: 56,
               display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 72,
-              height: 72,
-              background: "#fafaf7",
-              color: "#141414",
-              fontSize: 32,
-              fontWeight: 800,
-              letterSpacing: "-0.04em",
-              borderRadius: 16,
             }}
           >
-            NOC
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "#cfd6b5",
+                clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "#3a6b48",
+                clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
+                transform: "scale(0.82) translateY(-4px)",
+              }}
+            />
           </div>
           <div
             style={{
-              fontSize: 22,
-              letterSpacing: "0.22em",
-              textTransform: "uppercase",
-              opacity: 0.75,
+              fontSize: 28,
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
             }}
           >
-            kde přespat venku
+            nocuju.cz
           </div>
         </div>
 
