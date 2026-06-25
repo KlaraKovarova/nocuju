@@ -19,7 +19,6 @@ on:
           - rollback
           - db-bootstrap
           - db-schema-push
-          - crawl-viaczechia
           - diagnose
       lines:
         description: "tail-logs: number of log lines to print (default 200)"
@@ -478,51 +477,6 @@ jobs:
             echo '--- step 2: seed (idempotent: re-running is safe)'
             npx --yes tsx scripts/seed.ts
             echo 'bootstrap_complete'
-          EOF
-
-      - name: crawl-viaczechia
-        if: inputs.action == 'crawl-viaczechia'
-        env:
-          USER: ${{ secrets.HOSTINGER_SSH_USER }}
-          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
-          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
-          PORT: ${{ steps.load_ssh.outputs.port }}
-        run: |
-          set -eu
-          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
-            env APP_PATH="$APP_PATH" bash -se <<'EOF'
-            set -eu
-            cd "$APP_PATH"
-            # 1. .env files (mirrors db-bootstrap)
-            for candidate in nodejs/.env .env .env.production "$HOME/.env"; do
-              if [ -f "$candidate" ] && grep -q '^DATABASE_URL=' "$candidate"; then
-                set -a
-                . "$candidate"
-                set +a
-                break
-              fi
-            done
-            # 2. fallback: scrape from the live Node runtime (same UID owns
-            # the process, so /proc/<pid>/environ is readable on CloudLinux).
-            if [ -z "${DATABASE_URL:-}" ]; then
-              for pid in $(pgrep -u "$(id -u)" -f 'node.*server.js' || true); do
-                line=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep '^DATABASE_URL=' || true)
-                if [ -n "$line" ]; then
-                  export "$line"
-                  echo "database_url_from_pid=$pid"
-                  break
-                fi
-              done
-            fi
-            if [ -z "${DATABASE_URL:-}" ]; then
-              echo "::error::DATABASE_URL not found (no .env, no live node process exposing it)"
-              exit 1
-            fi
-            echo 'database_host='$(echo "$DATABASE_URL" | sed -E 's|.*@([^/:]+).*|\1|')
-            export DATABASE_SSL="${DATABASE_SSL:-true}"
-            echo '--- crawl viaczechia.cz/utulny → places (idempotent upsert)'
-            npx --yes tsx scripts/crawl-viaczechia.ts
-            echo 'crawl_complete'
           EOF
 
       # rollback shares the deploy-ref step above (matched by `if:`).
