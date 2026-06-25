@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import Link from "next/link";
 
+import { NouzoveIcon, UtulnaIcon, ZdrojVodyIcon } from "@/components/CategoryIcon";
 import { db } from "@/db/client";
 import { places } from "@/db/schema";
 
@@ -34,7 +35,7 @@ const TILES: Tile[] = [
     blurb:
       "Otevřené dřevěnky, sruby a přístřešky volně dostupné každému turistovi.",
     palette: "from-emerald-800 via-emerald-700 to-emerald-900",
-    icon: <CabinIcon />,
+    icon: <UtulnaIcon size={44} mono />,
     image: "/category-utulna.webp",
     imageAlt: "Dřevěná horská útulna s pryčnami a kamnama",
   },
@@ -45,7 +46,7 @@ const TILES: Tile[] = [
     blurb:
       "Lean-to, ohniště a jednoduché přístřešky pro případ nepohody nebo nouze.",
     palette: "from-amber-700 via-amber-600 to-amber-800",
-    icon: <TentIcon />,
+    icon: <NouzoveIcon size={44} mono />,
     image: "/category-nouzove.webp",
     imageAlt: "Otevřený přístřešek v jehličnatém lese u ohniště",
   },
@@ -182,46 +183,6 @@ function pluralizeMista(n: number): string {
   if (n === 1) return "místo";
   if (n >= 2 && n <= 4) return "místa";
   return "míst";
-}
-
-function CabinIcon() {
-  return (
-    <svg
-      width="44"
-      height="44"
-      viewBox="0 0 48 48"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M6 24 24 8l18 16" />
-      <path d="M10 22v18h28V22" />
-      <path d="M20 40V28h8v12" />
-    </svg>
-  );
-}
-
-function TentIcon() {
-  return (
-    <svg
-      width="44"
-      height="44"
-      viewBox="0 0 48 48"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M6 40 24 8l18 32" />
-      <path d="M24 8v32" />
-      <path d="M16 40h16" />
-    </svg>
-  );
 }
 
 function HeroIllustration() {

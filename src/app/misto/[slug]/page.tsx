@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 
+import { CategoryIcon } from "@/components/CategoryIcon";
 import { MiniMap } from "@/components/MiniMap";
 import { SaveToggle } from "@/components/SaveToggle";
 import { ReportForm } from "./_components/ReportForm";
@@ -194,16 +195,16 @@ function buildPlaceJsonLd({
 }
 
 function HeroPlaceholder({ name, category }: { name: string; category: string | null }) {
-  const letter = name.trim().charAt(0).toUpperCase() || "?";
   const palette =
     category === "nouzove-nocoviste"
       ? "from-amber-700 to-amber-900"
       : "from-emerald-700 to-emerald-900";
   return (
     <div
-      className={`flex h-64 w-full items-center justify-center bg-gradient-to-br text-7xl font-semibold text-white sm:h-80 ${palette}`}
+      aria-label={name}
+      className={`flex h-64 w-full items-center justify-center bg-gradient-to-br text-white/90 sm:h-80 ${palette}`}
     >
-      {letter}
+      <CategoryIcon category={category} size={96} mono />
     </div>
   );
 }

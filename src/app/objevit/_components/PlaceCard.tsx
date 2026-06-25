@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { CategoryIcon } from "@/components/CategoryIcon";
 import { SaveToggle } from "@/components/SaveToggle";
 import type { Place } from "@/db/schema";
 
@@ -27,11 +28,23 @@ const SURFACE_LABEL: Record<string, string> = {
   mix: "Smíšená",
 };
 
-function PlaceholderImage({ name }: { name: string }) {
-  const letter = name.trim().charAt(0).toUpperCase() || "?";
+function PlaceholderImage({
+  name,
+  category,
+}: {
+  name: string;
+  category?: string;
+}) {
+  const palette =
+    category === "nouzove-nocoviste"
+      ? "from-amber-700 to-amber-900"
+      : "from-emerald-700 to-emerald-900";
   return (
-    <div className="flex h-40 w-full items-center justify-center bg-gradient-to-br from-emerald-700 to-emerald-900 text-4xl font-semibold text-white">
-      {letter}
+    <div
+      aria-label={name}
+      className={`flex h-40 w-full items-center justify-center bg-gradient-to-br text-white/90 ${palette}`}
+    >
+      <CategoryIcon category={category} size={52} mono />
     </div>
   );
 }
@@ -51,7 +64,7 @@ export function PlaceCard({ data }: { data: PlaceCardData }) {
             className="h-40 w-full object-cover"
           />
         ) : (
-          <PlaceholderImage name={place.name} />
+          <PlaceholderImage name={place.name} category={categorySlugs[0]} />
         )}
         <div className="absolute right-2 top-2">
           <SaveToggle slug={place.slug} />
