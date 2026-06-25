@@ -22,6 +22,7 @@ on:
           - db-audit-places
           - db-cleanup-seed-places
           - diagnose
+          - reap-workers
       lines:
         description: "tail-logs: number of log lines to print (default 200)"
         required: false
@@ -29,6 +30,10 @@ on:
         type: string
       target_sha:
         description: "rollback: commit SHA to check out before restart"
+        required: false
+        type: string
+      pids:
+        description: "reap-workers: space-separated PIDs to SIGTERM (default: all stale lsnode workers, keeping youngest)"
         required: false
         type: string
 
@@ -202,6 +207,97 @@ jobs:
             echo
             echo '=== timeout 10 node server.js (manual launch, captures stdout+stderr) ==='
             ( timeout --foreground 10 node server.js 2>&1 ) | head -120 || echo manual node exit: \$?
+          "
+
+      # NOC-89: reap stuck LiteSpeed/Passenger lsnode workers when Hostinger
+      # spawns a new node for every webhook-driven restart and the old workers
+      # never get reaped, pinning the CloudLinux PID/thread cgroup. Without
+      # this we'd have to ask the board to click hPanel → Node.js → Restart.
+      #
+      # If `pids` input is empty, the SSH-side script auto-discovers all
+      # lsnode.js workers under the current user and reaps everything except
+      # the youngest (so Passenger keeps a request-serving worker). With an
+      # explicit `pids` value, only those are signalled — useful when a future
+      # incident needs a specific subset killed.
+      - name: reap-workers
+        if: inputs.action == 'reap-workers'
+        env:
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PORT: ${{ steps.load_ssh.outputs.port }}
+          PIDS: ${{ inputs.pids }}
+        run: |
+          set -eu
+          # Single-string exec (Hostinger sshd rejects heredoc+env requests —
+          # same reason tail-logs/diagnose use this pattern).
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" "
+            set +e
+            export PATH=/opt/alt/alt-nodejs20/root/usr/bin:\$PATH
+            echo '=== pre-reap ps ==='
+            ps -fu \$(id -u) | grep -E '[l]snode\.js' || echo 'no lsnode procs'
+            echo
+            # Resolve target PIDs.
+            input_pids='$PIDS'
+            if [ -z \"\$input_pids\" ]; then
+              # Auto-discover: every lsnode.js worker under our uid, sorted by
+              # start time (oldest first), drop the youngest so Passenger
+              # always has one worker available to take new requests.
+              all=\$(ps -u \$(id -u) -o pid=,lstart=,cmd= | grep '[l]snode\\.js' | awk '{print \$1\"|\"\$2\" \"\$3\" \"\$4\" \"\$5\" \"\$6}' | sort -t'|' -k2)
+              echo '--- candidates (oldest -> newest) ---'
+              echo \"\$all\"
+              count=\$(echo \"\$all\" | grep -c . || true)
+              if [ \"\$count\" -le 1 ]; then
+                echo 'only one (or zero) lsnode worker — nothing to reap'
+                exit 0
+              fi
+              # Take all but the last (youngest).
+              kill_pids=\$(echo \"\$all\" | head -n -1 | awk -F'|' '{print \$1}' | tr '\\n' ' ')
+            else
+              kill_pids=\"\$input_pids\"
+            fi
+            echo
+            echo \"=== reaping: \$kill_pids ===\"
+            for pid in \$kill_pids; do
+              # Use bash builtin kill (no fork) — works even under PID pressure.
+              # If the PID is already dead, kill returns 1; we log and continue.
+              if kill \"\$pid\" 2>/dev/null; then
+                echo \"SIGTERM \$pid: ok\"
+              else
+                echo \"SIGTERM \$pid: not running or no permission\"
+              fi
+            done
+            echo
+            echo '=== sleeping 10s for graceful exit ==='
+            sleep 10
+            echo
+            echo '=== sigkill survivors ==='
+            survivors=''
+            for pid in \$kill_pids; do
+              if kill -0 \"\$pid\" 2>/dev/null; then
+                echo \"\$pid still alive — SIGKILL\"
+                kill -9 \"\$pid\" 2>/dev/null || echo \"  SIGKILL \$pid failed\"
+                survivors=\"\$survivors \$pid\"
+              fi
+            done
+            [ -z \"\$survivors\" ] && echo 'all reaped on SIGTERM'
+            sleep 3
+            echo
+            echo '=== post-reap ps ==='
+            ps -fu \$(id -u) | grep -E '[l]snode\\.js' || echo 'no lsnode procs remaining'
+            echo
+            echo '=== nudge passenger to spawn a fresh worker ==='
+            cd \"$APP_PATH\"
+            mkdir -p tmp
+            touch tmp/restart.txt
+            echo 'restart.txt touched'
+            echo
+            echo '=== loopback probe (give passenger 8s to spawn) ==='
+            sleep 8
+            for p in 3000 8080; do
+              code=\$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \"http://127.0.0.1:\$p/api/health/version\" 2>/dev/null || echo TIMEOUT)
+              echo \"port \$p -> \$code\"
+            done
           "
 
       - name: verify-deploy
