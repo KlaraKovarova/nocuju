@@ -503,10 +503,13 @@ jobs:
                 break
               fi
             done
-            # 2. fallback: scrape from the live Node runtime (same UID owns
-            # the process, so /proc/<pid>/environ is readable on CloudLinux).
+            # 2. fallback: scrape from the live Node runtime. The Hostinger
+            # process is `lsnode.js` (LiteSpeed wrapper) which loads server.js
+            # in-process — same UID owns it so /proc/<pid>/environ is readable
+            # on CloudLinux. Try a few cmdline patterns.
             if [ -z "${DATABASE_URL:-}" ]; then
-              for pid in $(pgrep -u "$(id -u)" -f 'node.*server.js' || true); do
+              pids=$(pgrep -u "$(id -u)" -f 'lsnode\.js|node.*server\.js' || true)
+              for pid in $pids; do
                 line=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep '^DATABASE_URL=' || true)
                 if [ -n "$line" ]; then
                   export "$line"
@@ -547,10 +550,13 @@ jobs:
                 break
               fi
             done
-            # 2. fallback: scrape from the live Node runtime (same UID owns
-            # the process, so /proc/<pid>/environ is readable on CloudLinux).
+            # 2. fallback: scrape from the live Node runtime. The Hostinger
+            # process is `lsnode.js` (LiteSpeed wrapper) which loads server.js
+            # in-process — same UID owns it so /proc/<pid>/environ is readable
+            # on CloudLinux. Try a few cmdline patterns.
             if [ -z "${DATABASE_URL:-}" ]; then
-              for pid in $(pgrep -u "$(id -u)" -f 'node.*server.js' || true); do
+              pids=$(pgrep -u "$(id -u)" -f 'lsnode\.js|node.*server\.js' || true)
+              for pid in $pids; do
                 line=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep '^DATABASE_URL=' || true)
                 if [ -n "$line" ]; then
                   export "$line"
