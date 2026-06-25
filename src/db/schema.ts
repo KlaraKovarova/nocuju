@@ -13,7 +13,12 @@ import {
 } from "drizzle-orm/mysql-core";
 
 export const surfaceEnum = ["kamenna", "drevena", "hlinena", "trava", "mix"] as const;
-export const sourceEnum = ["boudy.info", "viaczechia", "manual"] as const;
+export const sourceEnum = [
+  "boudy.info",
+  "viaczechia",
+  "npsumava",
+  "manual",
+] as const;
 export const reportCategoryEnum = [
   "info-nesedi",
   "nema-ho-tam",

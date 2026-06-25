@@ -16,7 +16,8 @@
     "seed:prod": "node --import tsx scripts/seed.ts",
     "probe": "tsx scripts/probe.ts",
     "crawl:boudy": "node --env-file=.env.local --import tsx scripts/crawl-boudy-info.ts",
-    "crawl:viaczechia": "node --env-file=.env.local --import tsx scripts/crawl-viaczechia.ts"
+    "crawl:viaczechia": "node --env-file=.env.local --import tsx scripts/crawl-viaczechia.ts",
+    "seed:npsumava-nouzove": "node --env-file=.env.local --import tsx scripts/seed-npsumava-nouzove.ts"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4",

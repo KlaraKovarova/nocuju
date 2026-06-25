@@ -37,6 +37,7 @@ const SURFACE_LABEL: Record<string, string> = {
 const SOURCE_LABEL: Record<string, string> = {
   "boudy.info": "boudy.info",
   viaczechia: "viaczechia.cz",
+  npsumava: "npsumava.cz",
   manual: "Vlastní záznam",
 };
 

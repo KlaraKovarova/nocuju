@@ -14,6 +14,7 @@ import { eq, sql } from "drizzle-orm";
 
 import { db } from "../db/client";
 import { amenities, categories, places } from "../db/schema";
+import { runNpsumavaNouzoveSeed } from "./seed-npsumava-nouzove";
 
 const CATEGORY_SEED = [
   { slug: "utulna", name: "Útulna" },
@@ -54,12 +55,17 @@ export async function runSeed(): Promise<void> {
     await upsertAmenity(slug, label);
   }
 
+  const npsumava = await runNpsumavaNouzoveSeed();
+
   const [{ count }] = (await db
     .select({ count: sql<number>`count(*)` })
     .from(places)) as Array<{ count: number }>;
 
   console.log(
     `seed: reference data ensured (categories + amenities); ${CATEGORY_SEED.length} categories, ${AMENITY_SEED.length} amenities`,
+  );
+  console.log(
+    `npsumava nouzove: ${npsumava.created} created, ${npsumava.updated} updated, ${npsumava.npsumavaRowsInDb} total in DB`,
   );
   console.log(`places in DB after seed: ${count} (seed no longer inserts places — use crawlers or admin panel)`);
 }

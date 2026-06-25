@@ -87,7 +87,7 @@ const SCHEMA_STATEMENTS: string[] = [
     \`surface\` ENUM('kamenna','drevena','hlinena','trava','mix'),
     \`has_wc\` BOOLEAN NOT NULL DEFAULT false,
     \`is_free\` BOOLEAN NOT NULL DEFAULT true,
-    \`source\` ENUM('boudy.info','viaczechia','manual') NOT NULL DEFAULT 'manual',
+    \`source\` ENUM('boudy.info','viaczechia','npsumava','manual') NOT NULL DEFAULT 'manual',
     \`source_url\` VARCHAR(512),
     \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     \`updated_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
