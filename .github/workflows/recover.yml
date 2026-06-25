@@ -19,6 +19,7 @@ on:
           - rollback
           - db-bootstrap
           - db-schema-push
+          - crawl-viaczechia
           - diagnose
       lines:
         description: "tail-logs: number of log lines to print (default 200)"
@@ -477,6 +478,38 @@ jobs:
             echo '--- step 2: seed (idempotent: re-running is safe)'
             npx --yes tsx scripts/seed.ts
             echo 'bootstrap_complete'
+          EOF
+
+      - name: crawl-viaczechia
+        if: inputs.action == 'crawl-viaczechia'
+        env:
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PORT: ${{ steps.load_ssh.outputs.port }}
+        run: |
+          set -eu
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
+            env APP_PATH="$APP_PATH" bash -se <<'EOF'
+            set -eu
+            cd "$APP_PATH"
+            for candidate in nodejs/.env .env .env.production "$HOME/.env"; do
+              if [ -f "$candidate" ] && grep -q '^DATABASE_URL=' "$candidate"; then
+                set -a
+                . "$candidate"
+                set +a
+                break
+              fi
+            done
+            if [ -z "${DATABASE_URL:-}" ]; then
+              echo "::error::DATABASE_URL not found in SSH session or .env files"
+              echo "Looked in: nodejs/.env, .env, .env.production, ~/.env."
+              exit 1
+            fi
+            echo 'database_host='$(echo "$DATABASE_URL" | sed -E 's|.*@([^/:]+).*|\1|')
+            echo '--- crawl viaczechia.cz/utulny → places (idempotent upsert)'
+            npx --yes tsx scripts/crawl-viaczechia.ts
+            echo 'crawl_complete'
           EOF
 
       # rollback shares the deploy-ref step above (matched by `if:`).
