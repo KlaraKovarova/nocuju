@@ -226,11 +226,12 @@ export function PlaceForm({
               defaultChecked={initial.isFree}
             />
           </Grid>
-          <Field label="Odkaz na zdroj (URL)">
+          <Field label="Odkaz na zdroj (URL) – povinný (mapy.cz, KČT, OSM, ...)">
             <input
               name="sourceUrl"
               defaultValue={initial.sourceUrl}
               type="url"
+              required
               className={inputClass}
               placeholder="https://…"
             />

@@ -32,7 +32,7 @@ export type ParsedForm = {
   hasWc: boolean;
   isFree: boolean;
   source: SourceLiteral;
-  sourceUrl: string | null;
+  sourceUrl: string;
   categorySlugs: string[];
   amenitySlugs: string[];
   images: ImageEntry[];
@@ -117,6 +117,22 @@ export function parseForm(fd: FormData): ParsedForm {
     throw new FormError("Neplatný zdroj.");
   }
 
+  // NOC-86: every place must have a verifiable origin URL so the public site
+  // never shows fabricated entries. The `seed://` scheme was used by an old
+  // dev-only seed and is rejected here.
+  const sourceUrl = readOptionalString(fd, "sourceUrl");
+  if (!sourceUrl) {
+    throw new FormError(
+      "Odkaz na zdroj (URL) je povinný – mapy.cz, oficiální stránka KČT, OSM, fotka s GPS apod.",
+    );
+  }
+  if (sourceUrl.startsWith("seed://")) {
+    throw new FormError("Schéma seed:// je vyhrazené pro dev seed a nelze ho uložit.");
+  }
+  if (!/^https?:\/\//i.test(sourceUrl)) {
+    throw new FormError("Odkaz na zdroj musí začínat http:// nebo https://.");
+  }
+
   return {
     name,
     slug,
@@ -131,7 +147,7 @@ export function parseForm(fd: FormData): ParsedForm {
     hasWc: readBool(fd, "hasWc"),
     isFree: readBool(fd, "isFree"),
     source: sourceRaw as SourceLiteral,
-    sourceUrl: readOptionalString(fd, "sourceUrl"),
+    sourceUrl,
     categorySlugs: readAll(fd, "categories"),
     amenitySlugs: readAll(fd, "amenities"),
     images: parseImages(readString(fd, "images")),
