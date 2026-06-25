@@ -481,100 +481,51 @@ jobs:
             echo 'bootstrap_complete'
           EOF
 
+      # The audit/cleanup endpoints live in the running Next.js app
+      # (/api/setup/audit-places, /api/setup/cleanup-seed-places). We invoke
+      # them through the public domain so no script needs to be present on the
+      # Hostinger box. SETUP_TOKEN is read from the live Node process's
+      # /proc/<pid>/environ over a short SSH session (CloudLinux allows same-UID
+      # reads). This avoids npx/tsx downloads that previously timed out under
+      # CloudLinux resource caps.
       - name: db-audit-places
         if: inputs.action == 'db-audit-places'
         env:
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
-          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
           PORT: ${{ steps.load_ssh.outputs.port }}
+          PUBLIC_URL: ${{ secrets.HOSTINGER_PUBLIC_URL || 'https://www.nocuju.cz' }}
         run: |
           set -eu
-          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
-            env APP_PATH="$APP_PATH" bash -se <<'EOF'
-            set -eu
-            cd "$APP_PATH"
-            # 1. .env files (mirrors db-bootstrap)
-            for candidate in nodejs/.env .env .env.production "$HOME/.env"; do
-              if [ -f "$candidate" ] && grep -q '^DATABASE_URL=' "$candidate"; then
-                set -a
-                . "$candidate"
-                set +a
-                break
-              fi
-            done
-            # 2. fallback: scrape from the live Node runtime. The Hostinger
-            # process is `lsnode.js` (LiteSpeed wrapper) which loads server.js
-            # in-process — same UID owns it so /proc/<pid>/environ is readable
-            # on CloudLinux. Try a few cmdline patterns.
-            if [ -z "${DATABASE_URL:-}" ]; then
-              pids=$(pgrep -u "$(id -u)" -f 'lsnode\.js|node.*server\.js' || true)
-              for pid in $pids; do
-                line=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep '^DATABASE_URL=' || true)
-                if [ -n "$line" ]; then
-                  export "$line"
-                  echo "database_url_from_pid=$pid"
-                  break
-                fi
-              done
-            fi
-            if [ -z "${DATABASE_URL:-}" ]; then
-              echo "::error::DATABASE_URL not found (no .env, no live node process exposing it)"
-              exit 1
-            fi
-            export DATABASE_SSL="${DATABASE_SSL:-true}"
-            export PATH=/opt/alt/alt-nodejs22/root/bin:/opt/alt/alt-nodejs22/root/usr/bin:/opt/alt/alt-nodejs20/root/usr/bin:$PATH
-            echo '--- prod places audit ---'
-            npx --yes tsx scripts/audit-places.ts
-            echo 'audit_complete'
-          EOF
+          token=$(ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
+            'pid=$(pgrep -u "$(id -u)" -f '\''lsnode\.js|node.*server\.js'\'' | head -1); [ -n "$pid" ] && tr "\0" "\n" < "/proc/$pid/environ" | grep -E "^SETUP_TOKEN=" | sed "s/^SETUP_TOKEN=//"' || true)
+          if [ -z "$token" ]; then
+            echo "::error::SETUP_TOKEN not found in live Node process /proc environ."
+            exit 1
+          fi
+          echo '--- prod places audit ---'
+          curl -fsS -X POST -H "Authorization: Bearer $token" \
+            "$PUBLIC_URL/api/setup/audit-places" | jq .
+          echo 'audit_complete'
 
       - name: db-cleanup-seed-places
         if: inputs.action == 'db-cleanup-seed-places'
         env:
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
-          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
           PORT: ${{ steps.load_ssh.outputs.port }}
+          PUBLIC_URL: ${{ secrets.HOSTINGER_PUBLIC_URL || 'https://www.nocuju.cz' }}
         run: |
           set -eu
-          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
-            env APP_PATH="$APP_PATH" bash -se <<'EOF'
-            set -eu
-            cd "$APP_PATH"
-            # 1. .env files (mirrors db-bootstrap)
-            for candidate in nodejs/.env .env .env.production "$HOME/.env"; do
-              if [ -f "$candidate" ] && grep -q '^DATABASE_URL=' "$candidate"; then
-                set -a
-                . "$candidate"
-                set +a
-                break
-              fi
-            done
-            # 2. fallback: scrape from the live Node runtime. The Hostinger
-            # process is `lsnode.js` (LiteSpeed wrapper) which loads server.js
-            # in-process — same UID owns it so /proc/<pid>/environ is readable
-            # on CloudLinux. Try a few cmdline patterns.
-            if [ -z "${DATABASE_URL:-}" ]; then
-              pids=$(pgrep -u "$(id -u)" -f 'lsnode\.js|node.*server\.js' || true)
-              for pid in $pids; do
-                line=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep '^DATABASE_URL=' || true)
-                if [ -n "$line" ]; then
-                  export "$line"
-                  echo "database_url_from_pid=$pid"
-                  break
-                fi
-              done
-            fi
-            if [ -z "${DATABASE_URL:-}" ]; then
-              echo "::error::DATABASE_URL not found (no .env, no live node process exposing it)"
-              exit 1
-            fi
-            export DATABASE_SSL="${DATABASE_SSL:-true}"
-            export PATH=/opt/alt/alt-nodejs22/root/bin:/opt/alt/alt-nodejs22/root/usr/bin:/opt/alt/alt-nodejs20/root/usr/bin:$PATH
-            echo '--- prod places cleanup (seed:// only) ---'
-            NOC_DELETE_CONFIRMED=yes npx --yes tsx scripts/cleanup-seed-places.ts
-            echo 'cleanup_complete'
-          EOF
+          token=$(ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
+            'pid=$(pgrep -u "$(id -u)" -f '\''lsnode\.js|node.*server\.js'\'' | head -1); [ -n "$pid" ] && tr "\0" "\n" < "/proc/$pid/environ" | grep -E "^SETUP_TOKEN=" | sed "s/^SETUP_TOKEN=//"' || true)
+          if [ -z "$token" ]; then
+            echo "::error::SETUP_TOKEN not found in live Node process /proc environ."
+            exit 1
+          fi
+          echo '--- prod places cleanup (seed:// only) ---'
+          curl -fsS -X POST -H "Authorization: Bearer $token" \
+            "$PUBLIC_URL/api/setup/cleanup-seed-places?confirm=yes" | jq .
+          echo 'cleanup_complete'
 
       # rollback shares the deploy-ref step above (matched by `if:`).
