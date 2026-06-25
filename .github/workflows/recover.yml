@@ -493,6 +493,7 @@ jobs:
             env APP_PATH="$APP_PATH" bash -se <<'EOF'
             set -eu
             cd "$APP_PATH"
+            # 1. .env files (mirrors db-bootstrap)
             for candidate in nodejs/.env .env .env.production "$HOME/.env"; do
               if [ -f "$candidate" ] && grep -q '^DATABASE_URL=' "$candidate"; then
                 set -a
@@ -501,12 +502,24 @@ jobs:
                 break
               fi
             done
+            # 2. fallback: scrape from the live Node runtime (same UID owns
+            # the process, so /proc/<pid>/environ is readable on CloudLinux).
             if [ -z "${DATABASE_URL:-}" ]; then
-              echo "::error::DATABASE_URL not found in SSH session or .env files"
-              echo "Looked in: nodejs/.env, .env, .env.production, ~/.env."
+              for pid in $(pgrep -u "$(id -u)" -f 'node.*server.js' || true); do
+                line=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep '^DATABASE_URL=' || true)
+                if [ -n "$line" ]; then
+                  export "$line"
+                  echo "database_url_from_pid=$pid"
+                  break
+                fi
+              done
+            fi
+            if [ -z "${DATABASE_URL:-}" ]; then
+              echo "::error::DATABASE_URL not found (no .env, no live node process exposing it)"
               exit 1
             fi
             echo 'database_host='$(echo "$DATABASE_URL" | sed -E 's|.*@([^/:]+).*|\1|')
+            export DATABASE_SSL="${DATABASE_SSL:-true}"
             echo '--- crawl viaczechia.cz/utulny → places (idempotent upsert)'
             npx --yes tsx scripts/crawl-viaczechia.ts
             echo 'crawl_complete'
