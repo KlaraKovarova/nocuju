@@ -523,6 +523,7 @@ jobs:
               exit 1
             fi
             export DATABASE_SSL="${DATABASE_SSL:-true}"
+            export PATH=/opt/alt/alt-nodejs22/root/bin:/opt/alt/alt-nodejs22/root/usr/bin:/opt/alt/alt-nodejs20/root/usr/bin:$PATH
             echo '--- prod places audit ---'
             npx --yes tsx scripts/audit-places.ts
             echo 'audit_complete'
@@ -570,6 +571,7 @@ jobs:
               exit 1
             fi
             export DATABASE_SSL="${DATABASE_SSL:-true}"
+            export PATH=/opt/alt/alt-nodejs22/root/bin:/opt/alt/alt-nodejs22/root/usr/bin:/opt/alt/alt-nodejs20/root/usr/bin:$PATH
             echo '--- prod places cleanup (seed:// only) ---'
             NOC_DELETE_CONFIRMED=yes npx --yes tsx scripts/cleanup-seed-places.ts
             echo 'cleanup_complete'
