@@ -22,6 +22,7 @@ on:
           - db-audit-places
           - db-cleanup-seed-places
           - db-migrate-verification
+          - provision-admin-env
           - diagnose
           - reap-workers
       lines:
@@ -693,5 +694,119 @@ jobs:
           echo "$status" | jq .status
           echo "$status" | jq -e '.status.adminColumnsPresent and .status.infoSediInEnum and .status.usersTablePresent and .status.placeVisitsTablePresent' > /dev/null
           echo 'migration_complete'
+
+      # NOC-102: prod admin login returned 500 because ADMIN_PASSWORD and
+      # ADMIN_SESSION_SECRET were never provisioned (lsnode spawn env only
+      # carries DATABASE_URL). The standalone Next server loads APP_PATH/.env
+      # at startup (same channel NOC-101 used for SETUP_TOKEN), so we merge
+      # both vars into that file and restart.
+      #
+      # - ADMIN_SESSION_SECRET is generated on the box and never leaves it.
+      # - ADMIN_PASSWORD comes from the optional repo secret ADMIN_PASSWORD
+      #   (the secure channel for the board: set it in GitHub → Settings →
+      #   Secrets → Actions, then rerun this action). It travels to the box
+      #   over SSH stdin — never on a command line, never printed. If the
+      #   secret is unset and .env has no password yet, a random placeholder
+      #   is written so the login endpoint degrades to a proper
+      #   303+error=1 instead of 500; nobody can log in until the real
+      #   secret is provisioned.
+      # Idempotent: existing .env values are kept unless the repo secret
+      # supplies a new password.
+      - name: provision-admin-env
+        if: inputs.action == 'provision-admin-env'
+        env:
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          PORT: ${{ steps.load_ssh.outputs.port }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PUBLIC_URL: ${{ secrets.HOSTINGER_PUBLIC_URL || 'https://www.nocuju.cz' }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          set -eu
+          SSH_BASE="ssh -i $HOME/.ssh/id_recover -p $PORT -o BatchMode=yes"
+
+          # 1) Ship the repo-secret password to the box over stdin, if set.
+          if [ -n "${ADMIN_PASSWORD:-}" ]; then
+            printf '%s' "$ADMIN_PASSWORD" | $SSH_BASE "$USER@$HOST" \
+              "umask 077; cat > '$APP_PATH/.admin-password.tmp'"
+            echo "password_source=github_secret"
+          else
+            echo "password_source=none (repo secret ADMIN_PASSWORD not set)"
+          fi
+
+          # 2) Merge into APP_PATH/.env, restart, probe wrong-password login.
+          $SSH_BASE "$USER@$HOST" \
+            "APP_PATH='$APP_PATH' PUBLIC_URL='$PUBLIC_URL' bash -se" <<'EOF'
+          set -eu
+          cd "$APP_PATH"
+          touch .env && chmod 600 .env
+
+          if ! grep -q '^ADMIN_SESSION_SECRET=' .env; then
+            secret=$(openssl rand -hex 32 2>/dev/null || tr -dc a-f0-9 < /dev/urandom | head -c 64)
+            printf 'ADMIN_SESSION_SECRET=%s\n' "$secret" >> .env
+            echo 'session_secret=generated (value not shown, stays on the box)'
+          else
+            echo 'session_secret=already_present'
+          fi
+
+          if [ -s .admin-password.tmp ]; then
+            pw=$(cat .admin-password.tmp)
+            rm -f .admin-password.tmp
+            # Write dotenv-safe double-quoted value (escape backslash + quote).
+            esc=$(printf '%s' "$pw" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+            grep -v '^ADMIN_PASSWORD=' .env > .env.new || true
+            printf 'ADMIN_PASSWORD="%s"\n' "$esc" >> .env.new
+            chmod 600 .env.new && mv .env.new .env
+            echo 'admin_password=synced_from_github_secret'
+          elif grep -q '^ADMIN_PASSWORD=' .env; then
+            rm -f .admin-password.tmp
+            echo 'admin_password=already_present (kept)'
+          else
+            rm -f .admin-password.tmp
+            placeholder=$(openssl rand -hex 24 2>/dev/null || tr -dc a-f0-9 < /dev/urandom | head -c 48)
+            printf 'ADMIN_PASSWORD=%s\n' "$placeholder" >> .env
+            echo 'admin_password=random_placeholder — nobody knows it; set repo secret ADMIN_PASSWORD and rerun this action'
+          fi
+
+          mkdir -p tmp && touch tmp/restart.txt
+          echo 'restart_signalled'
+
+          attempt=0
+          while :; do
+            attempt=$((attempt+1))
+            out=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 15 \
+              --data-urlencode 'password=definitely-not-the-password' \
+              "$PUBLIC_URL/api/admin/login") || out='000 '
+            code=${out%% *}
+            loc=${out#* }
+            if [ "$code" = 303 ] && printf '%s' "$loc" | grep -q 'error=1'; then
+              echo "wrong_password_probe=ok (HTTP 303 -> $loc)"
+              break
+            fi
+            echo "probe attempt $attempt -> HTTP $code ($loc)"
+            if [ "$attempt" -ge 10 ]; then
+              echo 'wrong-password probe never turned 303 — app may not have picked up .env; run tail-logs'
+              exit 1
+            fi
+            sleep 8
+          done
+          EOF
+
+          # 3) If a real password was shipped, verify an actual login from the
+          #    runner (secret stays masked in logs; cookie is discarded).
+          if [ -n "${ADMIN_PASSWORD:-}" ]; then
+            out=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 15 \
+              --data-urlencode "password=$ADMIN_PASSWORD" \
+              "$PUBLIC_URL/api/admin/login")
+            code=${out%% *}
+            loc=${out#* }
+            if [ "$code" = 303 ] && ! printf '%s' "$loc" | grep -q 'error=1'; then
+              echo "real_login_probe=ok (HTTP 303 -> $loc)"
+            else
+              echo "::error::real login probe failed: HTTP $code -> $loc"
+              exit 1
+            fi
+          fi
+          echo 'provision_admin_env_complete'
 
       # rollback shares the deploy-ref step above (matched by `if:`).

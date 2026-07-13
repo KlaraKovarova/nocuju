@@ -105,9 +105,22 @@ If that resolution fails (older deploys, ad-hoc rebuilds), the endpoint reports
 `workflow_dispatch` inputs:
 
 - `action`: `tail-logs` | `verify-deploy` | `pull-and-restart` | `rollback` |
-  `diagnose` | `db-bootstrap` | `db-schema-push`
+  `diagnose` | `db-bootstrap` | `db-schema-push` | `db-audit-places` |
+  `db-cleanup-seed-places` | `db-migrate-verification` | `provision-admin-env` |
+  `reap-workers`
 - `lines`: integer (used by `tail-logs`, default `200`)
 - `target_sha`: full SHA (used by `rollback`)
+- `pids`: space-separated PIDs (used by `reap-workers`, optional)
+
+`provision-admin-env` (NOC-102) merges `ADMIN_SESSION_SECRET` (generated on
+the box, never leaves it) and `ADMIN_PASSWORD` (from the optional repo secret
+`ADMIN_PASSWORD`, shipped over SSH stdin) into `APP_PATH/.env`, restarts the
+app via `tmp/restart.txt`, and probes `/api/admin/login`. Without the repo
+secret it writes a random placeholder password so the endpoint stops 500ing —
+to make admin login actually work, the board sets the `ADMIN_PASSWORD` repo
+secret (GitHub → Settings → Secrets and variables → Actions, or
+`gh secret set ADMIN_PASSWORD`) and reruns the action. The workflow then
+verifies a real login end-to-end without printing the value.
 
 The job loads `HOSTINGER_SSH_HOST`, `HOSTINGER_SSH_USER`, `HOSTINGER_SSH_KEY`,
 `HOSTINGER_APP_PATH` from repo secrets, opens an SSH connection, runs the
