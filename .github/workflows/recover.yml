@@ -493,10 +493,20 @@ jobs:
           rsync -a --delete -e "$SSH_BASE" \
             public/ "$USER@$HOST:$APP_PATH/public/"
 
-          # 4) Marker + restart signal. The marker lets verify-deploy report
-          #    what we last deployed (APP_PATH has no .git to inspect).
+          # 4) Marker + env restore + restart signal. The marker lets
+          #    verify-deploy report what we last deployed (APP_PATH has no
+          #    .git to inspect). APP_PATH/.env is re-installed from the
+          #    $HOME/.noc-env master copy on every deploy: NOC-102 showed
+          #    .env can vanish from APP_PATH across deploys even though our
+          #    rsync excludes protect it, so the durable copy lives outside
+          #    APP_PATH and is restored before the restart.
           $SSH_BASE "$USER@$HOST" "set -eu; \
             printf '%s\n' '$SRC_SHA' > \"$APP_PATH/.noc-deploy-sha\"; \
+            if [ -f \"\$HOME/.noc-env\" ]; then \
+              cp \"\$HOME/.noc-env\" \"$APP_PATH/.env\"; \
+              chmod 600 \"$APP_PATH/.env\"; \
+              echo env_restored_from_home_master; \
+            fi; \
             mkdir -p \"$APP_PATH/tmp\"; \
             touch \"$APP_PATH/tmp/restart.txt\"; \
             echo \"deployed_sha=$SRC_SHA\"; \
@@ -739,11 +749,27 @@ jobs:
             "APP_PATH='$APP_PATH' PUBLIC_URL='$PUBLIC_URL' bash -se" <<'EOF'
           set -eu
           cd "$APP_PATH"
-          touch .env && chmod 600 .env
+          # Durable master copy lives outside APP_PATH — deploys (or
+          # Hostinger's app machinery) can wipe APP_PATH/.env (NOC-102), so
+          # all values are kept in $HOME/.noc-env and installed into
+          # APP_PATH/.env here and on every deploy-ref run.
+          MASTER="$HOME/.noc-env"
+          [ -f .env ] && echo 'app_env=present' || echo 'app_env=absent'
+          touch "$MASTER" && chmod 600 "$MASTER"
 
-          if ! grep -q '^ADMIN_SESSION_SECRET=' .env; then
+          # One-time migration: absorb keys that only exist in APP_PATH/.env
+          # (e.g. SETUP_TOKEN from NOC-101) into the master copy.
+          if [ -f .env ]; then
+            while IFS= read -r line; do
+              case "$line" in ''|'#'*) continue ;; esac
+              key=${line%%=*}
+              grep -q "^$key=" "$MASTER" || printf '%s\n' "$line" >> "$MASTER"
+            done < .env
+          fi
+
+          if ! grep -q '^ADMIN_SESSION_SECRET=' "$MASTER"; then
             secret=$(openssl rand -hex 32 2>/dev/null || tr -dc a-f0-9 < /dev/urandom | head -c 64)
-            printf 'ADMIN_SESSION_SECRET=%s\n' "$secret" >> .env
+            printf 'ADMIN_SESSION_SECRET=%s\n' "$secret" >> "$MASTER"
             echo 'session_secret=generated (value not shown, stays on the box)'
           else
             echo 'session_secret=already_present'
@@ -754,19 +780,22 @@ jobs:
             rm -f .admin-password.tmp
             # Write dotenv-safe double-quoted value (escape backslash + quote).
             esc=$(printf '%s' "$pw" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
-            grep -v '^ADMIN_PASSWORD=' .env > .env.new || true
-            printf 'ADMIN_PASSWORD="%s"\n' "$esc" >> .env.new
-            chmod 600 .env.new && mv .env.new .env
+            grep -v '^ADMIN_PASSWORD=' "$MASTER" > "$MASTER.new" || true
+            printf 'ADMIN_PASSWORD="%s"\n' "$esc" >> "$MASTER.new"
+            chmod 600 "$MASTER.new" && mv "$MASTER.new" "$MASTER"
             echo 'admin_password=synced_from_github_secret'
-          elif grep -q '^ADMIN_PASSWORD=' .env; then
+          elif grep -q '^ADMIN_PASSWORD=' "$MASTER"; then
             rm -f .admin-password.tmp
             echo 'admin_password=already_present (kept)'
           else
             rm -f .admin-password.tmp
             placeholder=$(openssl rand -hex 24 2>/dev/null || tr -dc a-f0-9 < /dev/urandom | head -c 48)
-            printf 'ADMIN_PASSWORD=%s\n' "$placeholder" >> .env
+            printf 'ADMIN_PASSWORD=%s\n' "$placeholder" >> "$MASTER"
             echo 'admin_password=random_placeholder — nobody knows it; set repo secret ADMIN_PASSWORD and rerun this action'
           fi
+
+          cp "$MASTER" .env && chmod 600 .env
+          echo "env_installed ($(grep -c '=' .env) keys)"
 
           mkdir -p tmp && touch tmp/restart.txt
           echo 'restart_signalled'

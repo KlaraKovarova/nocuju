@@ -114,13 +114,22 @@ If that resolution fails (older deploys, ad-hoc rebuilds), the endpoint reports
 
 `provision-admin-env` (NOC-102) merges `ADMIN_SESSION_SECRET` (generated on
 the box, never leaves it) and `ADMIN_PASSWORD` (from the optional repo secret
-`ADMIN_PASSWORD`, shipped over SSH stdin) into `APP_PATH/.env`, restarts the
-app via `tmp/restart.txt`, and probes `/api/admin/login`. Without the repo
-secret it writes a random placeholder password so the endpoint stops 500ing —
-to make admin login actually work, the board sets the `ADMIN_PASSWORD` repo
-secret (GitHub → Settings → Secrets and variables → Actions, or
+`ADMIN_PASSWORD`, shipped over SSH stdin) into the durable master env file
+`$HOME/.noc-env`, installs it as `APP_PATH/.env`, restarts the app via
+`tmp/restart.txt`, and probes `/api/admin/login`. Without the repo secret it
+writes a random placeholder password so the endpoint stops 500ing — to make
+admin login actually work, the board sets the `ADMIN_PASSWORD` repo secret
+(GitHub → Settings → Secrets and variables → Actions, or
 `gh secret set ADMIN_PASSWORD`) and reruns the action. The workflow then
 verifies a real login end-to-end without printing the value.
+
+**Env durability:** `APP_PATH/.env` proved to be wiped across deploys
+(NOC-102) even though the deploy rsync excludes it, so the source of truth is
+`$HOME/.noc-env` (outside `APP_PATH`). Both `provision-admin-env` and every
+`pull-and-restart`/`rollback` copy it back to `APP_PATH/.env` before touching
+`tmp/restart.txt`. Never write secrets only to `APP_PATH/.env` — put them in
+the master file (or rerun `provision-admin-env`, which migrates any keys it
+finds in `APP_PATH/.env` into the master).
 
 The job loads `HOSTINGER_SSH_HOST`, `HOSTINGER_SSH_USER`, `HOSTINGER_SSH_KEY`,
 `HOSTINGER_APP_PATH` from repo secrets, opens an SSH connection, runs the
