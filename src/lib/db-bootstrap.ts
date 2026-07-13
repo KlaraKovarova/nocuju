@@ -65,7 +65,7 @@ const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS \`place_reports\` (
     \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     \`place_id\` INT NOT NULL,
-    \`category\` ENUM('info-nesedi','nema-ho-tam','nebezpecne','jine') NOT NULL,
+    \`category\` ENUM('info-nesedi','nema-ho-tam','nebezpecne','jine','info-sedi') NOT NULL,
     \`note\` VARCHAR(500),
     \`contact_email\` VARCHAR(254),
     \`source_ip_hash\` VARCHAR(64),
@@ -89,11 +89,34 @@ const SCHEMA_STATEMENTS: string[] = [
     \`is_free\` BOOLEAN NOT NULL DEFAULT true,
     \`source\` ENUM('boudy.info','viaczechia','npsumava','manual') NOT NULL DEFAULT 'manual',
     \`source_url\` VARCHAR(512),
+    \`admin_verified_at\` TIMESTAMP NULL,
+    \`admin_verified_by\` VARCHAR(128),
+    \`admin_verified_note\` VARCHAR(500),
     \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     \`updated_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY(\`id\`),
     UNIQUE KEY \`places_slug_uq\` (\`slug\`),
     UNIQUE KEY \`places_source_url_uq\` (\`source\`,\`source_url\`)
+  )`,
+  `CREATE TABLE IF NOT EXISTS \`users\` (
+    \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    \`email\` VARCHAR(254) NOT NULL,
+    \`display_name\` VARCHAR(128),
+    \`password_hash\` VARCHAR(255),
+    \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(\`id\`),
+    UNIQUE KEY \`users_email_uq\` (\`email\`)
+  )`,
+  `CREATE TABLE IF NOT EXISTS \`place_visits\` (
+    \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    \`place_id\` INT NOT NULL,
+    \`user_id\` INT NOT NULL,
+    \`visited_on\` DATE NOT NULL,
+    \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(\`id\`),
+    UNIQUE KEY \`place_visits_place_user_day_uq\` (\`place_id\`,\`user_id\`,\`visited_on\`),
+    KEY \`place_visits_place_idx\` (\`place_id\`),
+    KEY \`place_visits_user_idx\` (\`user_id\`)
   )`,
 ];
 
@@ -158,6 +181,8 @@ export async function applySchema(): Promise<TableReport[]> {
     ...EXPECTED_TABLES,
     "analytics_events",
     "place_reports",
+    "users",
+    "place_visits",
   ]) {
     const existed = await tableExists(tableName);
     reports.push({ name: tableName, existed });

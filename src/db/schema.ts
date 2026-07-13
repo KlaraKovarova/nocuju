@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   index,
   int,
   mysqlEnum,
@@ -24,6 +25,7 @@ export const reportCategoryEnum = [
   "nema-ho-tam",
   "nebezpecne",
   "jine",
+  "info-sedi",
 ] as const;
 export const reportStatusEnum = ["new", "triaged", "resolved", "dismissed"] as const;
 export const uaClassEnum = ["mobile", "desktop", "bot", "other"] as const;
@@ -73,6 +75,9 @@ export const places = mysqlTable(
     isFree: boolean("is_free").notNull().default(true),
     source: mysqlEnum("source", sourceEnum).notNull().default("manual"),
     sourceUrl: varchar("source_url", { length: 512 }),
+    adminVerifiedAt: timestamp("admin_verified_at"),
+    adminVerifiedBy: varchar("admin_verified_by", { length: 128 }),
+    adminVerifiedNote: varchar("admin_verified_note", { length: 500 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   },
@@ -128,6 +133,41 @@ export const placeReports = mysqlTable(
   ],
 );
 
+// Minimal users schema for NOC-93 (visit-based verification). Auth UI and
+// session handling land in a follow-up ticket; password_hash stays nullable
+// until then so alternative auth (magic link, OAuth) is not ruled out.
+export const users = mysqlTable(
+  "users",
+  {
+    id: serial("id").primaryKey(),
+    email: varchar("email", { length: 254 }).notNull(),
+    displayName: varchar("display_name", { length: 128 }),
+    passwordHash: varchar("password_hash", { length: 255 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("users_email_uq").on(table.email)],
+);
+
+export const placeVisits = mysqlTable(
+  "place_visits",
+  {
+    id: serial("id").primaryKey(),
+    placeId: int("place_id").notNull(),
+    userId: int("user_id").notNull(),
+    visitedOn: date("visited_on").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("place_visits_place_user_day_uq").on(
+      table.placeId,
+      table.userId,
+      table.visitedOn,
+    ),
+    index("place_visits_place_idx").on(table.placeId),
+    index("place_visits_user_idx").on(table.userId),
+  ],
+);
+
 export const analyticsEvents = mysqlTable(
   "analytics_events",
   {
@@ -154,6 +194,8 @@ export const schema = {
   placeAmenities,
   placeImages,
   placeReports,
+  users,
+  placeVisits,
   analyticsEvents,
 };
 
@@ -165,5 +207,9 @@ export type Location = typeof locations.$inferSelect;
 export type PlaceImage = typeof placeImages.$inferSelect;
 export type PlaceReport = typeof placeReports.$inferSelect;
 export type NewPlaceReport = typeof placeReports.$inferInsert;
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+export type PlaceVisit = typeof placeVisits.$inferSelect;
+export type NewPlaceVisit = typeof placeVisits.$inferInsert;
 export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
 export type NewAnalyticsEvent = typeof analyticsEvents.$inferInsert;

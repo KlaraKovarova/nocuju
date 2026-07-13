@@ -39,4 +39,5 @@ export const REPORT_CATEGORY_LABEL: Record<ReportCategory, string> = {
   "nema-ho-tam": "Místo už neexistuje",
   nebezpecne: "Nebezpečné",
   jine: "Jiné",
+  "info-sedi": "Info sedí",
 };
