@@ -19,10 +19,19 @@ import {
   type PlaceFormInitial,
   type PlaceFormOption,
 } from "../_components/PlaceForm";
+import {
+  VerificationPanel,
+  type VerificationState,
+} from "../_components/VerificationPanel";
 
 export const dynamic = "force-dynamic";
 
-async function loadInitial(placeId: number): Promise<PlaceFormInitial | null> {
+type EditPageData = {
+  initial: PlaceFormInitial;
+  verification: VerificationState;
+};
+
+async function loadInitial(placeId: number): Promise<EditPageData | null> {
   const placeRows = await db
     .select()
     .from(places)
@@ -62,7 +71,15 @@ async function loadInitial(placeId: number): Promise<PlaceFormInitial | null> {
     .map((img) => (img.alt ? `${img.url} | ${img.alt}` : img.url))
     .join("\n");
 
-  return {
+  const verification: VerificationState = place.adminVerifiedAt
+    ? {
+        at: place.adminVerifiedAt,
+        by: place.adminVerifiedBy,
+        note: place.adminVerifiedNote,
+      }
+    : null;
+
+  const initial: PlaceFormInitial = {
     id: placeId,
     name: place.name,
     slug: place.slug,
@@ -82,6 +99,8 @@ async function loadInitial(placeId: number): Promise<PlaceFormInitial | null> {
     amenitySlugs: amenityRows.map((r) => r.slug),
     imagesText,
   };
+
+  return { initial, verification };
 }
 
 async function loadTaxonomy(): Promise<{
@@ -110,8 +129,9 @@ export default async function EditPlacePage({
   const placeId = parseInt(id, 10);
   if (!Number.isFinite(placeId) || placeId <= 0) notFound();
 
-  const initial = await loadInitial(placeId);
-  if (!initial) notFound();
+  const data = await loadInitial(placeId);
+  if (!data) notFound();
+  const { initial, verification } = data;
 
   const { categoryOptions, amenityOptions } = await loadTaxonomy();
 
@@ -119,19 +139,40 @@ export default async function EditPlacePage({
   const errorRaw = Array.isArray(sp.error) ? sp.error[0] : sp.error;
   const errorMessage = errorRaw ? decodeURIComponent(errorRaw) : null;
   const savedRaw = Array.isArray(sp.saved) ? sp.saved[0] : sp.saved;
-  const successMessage = savedRaw === "1" ? "Změny uloženy." : null;
+  const verifiedRaw = Array.isArray(sp.verified) ? sp.verified[0] : sp.verified;
+  const unverifiedRaw = Array.isArray(sp.unverified)
+    ? sp.unverified[0]
+    : sp.unverified;
+  const successMessage =
+    savedRaw === "1"
+      ? "Změny uloženy."
+      : verifiedRaw === "1"
+        ? "Místo označeno jako ověřené."
+        : unverifiedRaw === "1"
+          ? "Ověření zrušeno."
+          : null;
 
   return (
     <AdminShell title={`Upravit: ${initial.name}`}>
-      <PlaceForm
-        initial={initial}
-        categoryOptions={categoryOptions}
-        amenityOptions={amenityOptions}
-        submitUrl={`/api/admin/places/${placeId}`}
-        deleteUrl={`/api/admin/places/${placeId}/delete`}
-        errorMessage={errorMessage}
-        successMessage={successMessage}
-      />
+      <div className="space-y-6">
+        {successMessage && (
+          <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+            {successMessage}
+          </div>
+        )}
+        <VerificationPanel
+          verification={verification}
+          actionUrl={`/api/admin/places/${placeId}/verify`}
+        />
+        <PlaceForm
+          initial={initial}
+          categoryOptions={categoryOptions}
+          amenityOptions={amenityOptions}
+          submitUrl={`/api/admin/places/${placeId}`}
+          deleteUrl={`/api/admin/places/${placeId}/delete`}
+          errorMessage={errorMessage}
+        />
+      </div>
     </AdminShell>
   );
 }

@@ -21,6 +21,7 @@ type PlaceRow = {
   city: string | null;
   region: string | null;
   updatedAt: Date;
+  adminVerifiedAt: Date | null;
 };
 
 async function loadPlaces(q: string, page: number): Promise<{
@@ -59,6 +60,7 @@ async function loadPlaces(q: string, page: number): Promise<{
       city: locations.city,
       region: locations.region,
       updatedAt: places.updatedAt,
+      adminVerifiedAt: places.adminVerifiedAt,
     })
     .from(places)
     .leftJoin(locations, eq(places.locationId, locations.id));
@@ -78,6 +80,7 @@ async function loadPlaces(q: string, page: number): Promise<{
     city: string | null;
     region: string | null;
     updatedAt: Date;
+    adminVerifiedAt: Date | null;
   }>;
 
   return {
@@ -157,6 +160,7 @@ export default async function AdminPlacesPage({
               <th className="px-3 py-2">Míst</th>
               <th className="px-3 py-2">WC</th>
               <th className="px-3 py-2">Zdroj</th>
+              <th className="px-3 py-2">Ověřeno</th>
               <th className="px-3 py-2">Upraveno</th>
               <th className="px-3 py-2"></th>
             </tr>
@@ -164,7 +168,7 @@ export default async function AdminPlacesPage({
           <tbody className="divide-y divide-zinc-100">
             {rows.length === 0 ? (
               <tr>
-                <td className="px-3 py-8 text-center text-zinc-500" colSpan={7}>
+                <td className="px-3 py-8 text-center text-zinc-500" colSpan={8}>
                   Žádná místa.
                 </td>
               </tr>
@@ -194,6 +198,18 @@ export default async function AdminPlacesPage({
                       {row.hasWc ? "✓" : "—"}
                     </td>
                     <td className="px-3 py-2 text-zinc-700">{row.source}</td>
+                    <td className="px-3 py-2">
+                      {row.adminVerifiedAt ? (
+                        <span
+                          className="font-semibold text-emerald-700"
+                          title={formatDate(row.adminVerifiedAt)}
+                        >
+                          ✓
+                        </span>
+                      ) : (
+                        <span className="text-zinc-400">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-xs text-zinc-500">
                       {formatDate(row.updatedAt)}
                     </td>
