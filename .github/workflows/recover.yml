@@ -102,13 +102,20 @@ jobs:
           #   1. HOSTINGER_SSH_PORT secret if set (explicit override).
           #   2. 65002 — Hostinger Business/Premium shared hosting standard.
           #   3. 22 — generic default (Hostinger VPS, custom setups).
+          # Retried 3x: Hostinger's sshd intermittently drops keyscan
+          # connections from Actions runners (~40 % of runs during NOC-102),
+          # and a dead recovery channel is worse than 20 s of extra wait.
           detected_port=""
-          for port in ${PORT_OVERRIDE:-} 65002 22; do
-            [ -z "$port" ] && continue
-            if ssh-keyscan -T 5 -p "$port" -H "$HOST" >> ~/.ssh/known_hosts 2> /tmp/keyscan.err; then
-              detected_port="$port"
-              break
-            fi
+          for round in 1 2 3; do
+            for port in ${PORT_OVERRIDE:-} 65002 22; do
+              [ -z "$port" ] && continue
+              if ssh-keyscan -T 5 -p "$port" -H "$HOST" >> ~/.ssh/known_hosts 2> /tmp/keyscan.err; then
+                detected_port="$port"
+                break 2
+              fi
+            done
+            echo "keyscan round $round failed on all ports; retrying in 10s"
+            sleep 10
           done
           if [ -z "$detected_port" ]; then
             echo "::error::ssh-keyscan failed on every candidate port (override=${PORT_OVERRIDE:-none}, 65002, 22)."
