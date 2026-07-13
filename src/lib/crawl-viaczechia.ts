@@ -9,9 +9,12 @@
  * the Via Czechia long-distance trails. Each row provides name, úsek, stezka,
  * stage number, km on trail, mapy.cz short link, and DMS coordinates inline.
  *
- * Dedupe / idempotency: unique index (source, source_url). Cross-source dedupe
- * vs boudy.info uses name token overlap + 100 m Haversine threshold — matching
- * rows are reported and skipped (no auto-merge).
+ * Dedupe / idempotency: unique index (source, source_url), plus coordinate
+ * dedupe — the listing repeats a útulna once per trail section, sometimes with
+ * a different mapy.cz short link but identical DMS coordinates (NOC-103), so
+ * rows sharing coordinates merge into one place with multiple occurrences.
+ * Cross-source dedupe vs boudy.info uses name token overlap + 100 m Haversine
+ * threshold — matching rows are reported and skipped (no auto-merge).
  *
  * Rate limit: 1 request per second; only one fetch is needed in practice.
  */
@@ -26,14 +29,14 @@ const USER_AGENT = "NOC-Crawler/1.0 (+admin@noc.cz)";
 const RATE_LIMIT_MS = 1000;
 const DUPE_DISTANCE_M = 100;
 
-type Occurrence = {
+export type Occurrence = {
   stezka: string;
   usek: string;
   etapa: string;
   km: string;
 };
 
-type CrawledPlace = {
+export type CrawledPlace = {
   name: string;
   lat: string;
   lng: string;
@@ -126,9 +129,10 @@ function nameTokenOverlap(a: string, b: string): number {
   return hits / Math.min(ta.size, tb.size);
 }
 
-function parseListing(html: string): CrawledPlace[] {
+export function parseListing(html: string): CrawledPlace[] {
   const $ = load(html);
   const byUrl = new Map<string, CrawledPlace>();
+  const byCoord = new Map<string, CrawledPlace>();
   const $rows = $("article table tr, .entry-content table tr");
   let currentStezka = "";
 
@@ -157,21 +161,29 @@ function parseListing(html: string): CrawledPlace[] {
     if (!coords) return;
 
     const occurrence: Occurrence = { stezka: currentStezka, usek, etapa, km };
-    const existing = byUrl.get(href);
+    const lat = coords.lat.toFixed(6);
+    const lng = coords.lng.toFixed(6);
+    const coordKey = `${lat},${lng}`;
+    const existing = byUrl.get(href) ?? byCoord.get(coordKey);
     if (existing) {
       existing.occurrences.push(occurrence);
+      // Same place listed under a second mapy.cz short link — remember the
+      // alias so further rows with either link keep merging (NOC-103).
+      if (!byUrl.has(href)) byUrl.set(href, existing);
       return;
     }
-    byUrl.set(href, {
+    const place: CrawledPlace = {
       name,
-      lat: coords.lat.toFixed(6),
-      lng: coords.lng.toFixed(6),
+      lat,
+      lng,
       sourceUrl: href,
       occurrences: [occurrence],
-    });
+    };
+    byUrl.set(href, place);
+    byCoord.set(coordKey, place);
   });
 
-  return [...byUrl.values()];
+  return [...byCoord.values()];
 }
 
 function buildDescription(p: CrawledPlace): string {
@@ -250,18 +262,52 @@ async function upsertViaCzechiaPlace(
     return "updated";
   }
 
+  // Coordinate guard (NOC-103): the listing sometimes links the same útulna
+  // under a different mapy.cz short code. If a viaczechia row already sits at
+  // exactly these coordinates, update it instead of inserting a duplicate.
+  // Keep its original sourceUrl — the (source, source_url) unique index is
+  // its identity for future crawls.
+  const coordMatch = await db
+    .select({ id: places.id })
+    .from(places)
+    .where(
+      and(
+        eq(places.source, "viaczechia"),
+        eq(places.lat, p.lat),
+        eq(places.lng, p.lng),
+      ),
+    );
+  if (coordMatch[0]) {
+    const id = Number(coordMatch[0].id);
+    await db
+      .update(places)
+      .set({ name: p.name, description })
+      .where(eq(places.id, id));
+    return "updated";
+  }
+
+  // Slug collision fallback prefers the trail section (oblast) over the
+  // opaque mapy.cz short code (NOC-103), then a numeric suffix as last resort.
   const baseSlug = slugify(`utulna-${p.name}`) || "utulna-via-czechia";
-  let slug = baseSlug;
-  const suffix = p.sourceUrl.split("/").pop() ?? "";
-  for (let attempt = 0; attempt < 3; attempt++) {
+  const usekSuffix = slugify(p.occurrences[0]?.usek ?? "");
+  const candidates = [
+    baseSlug,
+    ...(usekSuffix ? [`${baseSlug}-${usekSuffix}`.slice(0, 160)] : []),
+    `${baseSlug}-2`.slice(0, 160),
+    `${baseSlug}-3`.slice(0, 160),
+  ];
+  let slug: string | null = null;
+  for (const candidate of candidates) {
     const clash = await db
       .select({ id: places.id })
       .from(places)
-      .where(eq(places.slug, slug));
-    if (clash.length === 0) break;
-    slug = `${baseSlug}-${suffix}`.slice(0, 160);
-    if (attempt === 2) throw new Error(`could not resolve slug for ${p.name}`);
+      .where(eq(places.slug, candidate));
+    if (clash.length === 0) {
+      slug = candidate;
+      break;
+    }
   }
+  if (!slug) throw new Error(`could not resolve slug for ${p.name}`);
 
   await db.insert(places).values({
     slug,

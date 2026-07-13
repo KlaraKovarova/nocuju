@@ -21,6 +21,7 @@ on:
           - db-schema-push
           - db-audit-places
           - db-cleanup-seed-places
+          - db-merge-viaczechia-duplicates
           - db-migrate-verification
           - provision-admin-env
           - diagnose
@@ -698,6 +699,48 @@ jobs:
             "$PUBLIC_URL/api/setup/cleanup-seed-places?confirm=yes"
           echo
           echo 'cleanup_complete'
+          EOF
+
+      # NOC-103: merge viaczechia rows sharing identical coordinates (the
+      # listing links one útulna under two mapy.cz short codes), then re-run
+      # the crawl so the kept row's description lists every trail occurrence.
+      - name: db-merge-viaczechia-duplicates
+        if: inputs.action == 'db-merge-viaczechia-duplicates'
+        env:
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          PORT: ${{ steps.load_ssh.outputs.port }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PUBLIC_URL: ${{ secrets.HOSTINGER_PUBLIC_URL || 'https://www.nocuju.cz' }}
+        run: |
+          set -eu
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
+            "APP_PATH='$APP_PATH' PUBLIC_URL='$PUBLIC_URL' bash -se" <<'EOF'
+          set -eu
+          cd "$APP_PATH"
+          token=""
+          if [ -f .env ]; then
+            token=$(grep -E '^SETUP_TOKEN=' .env | head -1 | cut -d= -f2-) || true
+          fi
+          if [ -z "$token" ]; then
+            for e in /proc/[0-9]*/environ; do
+              t=$(cat "$e" 2>/dev/null | tr '\0' '\n' | grep -E '^SETUP_TOKEN=' | head -1 | cut -d= -f2-) || true
+              if [ -n "$t" ]; then token="$t"; break; fi
+            done
+          fi
+          if [ -z "$token" ]; then
+            echo "SETUP_TOKEN not found in APP_PATH/.env nor any /proc environ." >&2
+            exit 1
+          fi
+          echo '--- merge viaczechia coordinate duplicates ---'
+          curl -fsS --max-time 60 -X POST -H "Authorization: Bearer $token" \
+            "$PUBLIC_URL/api/setup/merge-viaczechia-duplicates?confirm=yes"
+          echo
+          echo '--- re-crawl viaczechia (refresh descriptions) ---'
+          curl -fsS --max-time 120 -X POST -H "Authorization: Bearer $token" \
+            "$PUBLIC_URL/api/setup/crawl-viaczechia"
+          echo
+          echo 'merge_complete'
           EOF
 
       - name: db-migrate-verification
