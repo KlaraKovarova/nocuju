@@ -633,16 +633,23 @@ jobs:
           fi
           if [ -z "$token" ]; then
             # Self-provision: persist into the $HOME/.noc-env master (so
-            # deploys restoring .env from it keep the token) AND .env, then
-            # restart so the app loads it. Value never leaves the box.
+            # deploys restoring .env from it keep the token). Value never
+            # leaves the box. The sync block below installs it into .env.
             token=$(openssl rand -hex 32 2>/dev/null || tr -dc a-f0-9 < /dev/urandom | head -c 64)
             touch "$MASTER" && chmod 600 "$MASTER"
             printf 'SETUP_TOKEN=%s\n' "$token" >> "$MASTER"
-            touch .env && chmod 600 .env
-            printf 'SETUP_TOKEN=%s\n' "$token" >> .env
-            echo 'generated new SETUP_TOKEN into .noc-env master + .env (value not shown)'
+            echo 'generated new SETUP_TOKEN into .noc-env master (value not shown)'
+          fi
+          # The app only reads .env at startup — a Hostinger webhook deploy
+          # can leave .env without the token even though the master has it
+          # (NOC-103: audit 401'd 8x for exactly this reason). Make sure the
+          # running app has this token: sync .env + restart when they differ.
+          if ! grep -qxF "SETUP_TOKEN=$token" .env 2>/dev/null; then
+            grep -vE '^SETUP_TOKEN=' .env > .env.tmp 2>/dev/null || true
+            printf 'SETUP_TOKEN=%s\n' "$token" >> .env.tmp
+            mv .env.tmp .env && chmod 600 .env
             mkdir -p tmp && touch tmp/restart.txt
-            echo 'restart_signalled'
+            echo 'env_synced_and_restart_signalled'
           fi
           echo '--- prod places audit ---'
           resp_file=$(mktemp)
@@ -718,10 +725,13 @@ jobs:
             "APP_PATH='$APP_PATH' PUBLIC_URL='$PUBLIC_URL' bash -se" <<'EOF'
           set -eu
           cd "$APP_PATH"
+          MASTER="$HOME/.noc-env"
           token=""
-          if [ -f .env ]; then
-            token=$(grep -E '^SETUP_TOKEN=' .env | head -1 | cut -d= -f2-) || true
-          fi
+          for f in .env "$MASTER"; do
+            if [ -z "$token" ] && [ -f "$f" ]; then
+              token=$(grep -E '^SETUP_TOKEN=' "$f" | head -1 | cut -d= -f2-) || true
+            fi
+          done
           if [ -z "$token" ]; then
             for e in /proc/[0-9]*/environ; do
               t=$(cat "$e" 2>/dev/null | tr '\0' '\n' | grep -E '^SETUP_TOKEN=' | head -1 | cut -d= -f2-) || true
@@ -729,12 +739,40 @@ jobs:
             done
           fi
           if [ -z "$token" ]; then
-            echo "SETUP_TOKEN not found in APP_PATH/.env nor any /proc environ." >&2
-            exit 1
+            token=$(openssl rand -hex 32 2>/dev/null || tr -dc a-f0-9 < /dev/urandom | head -c 64)
+            touch "$MASTER" && chmod 600 "$MASTER"
+            printf 'SETUP_TOKEN=%s\n' "$token" >> "$MASTER"
+            echo 'generated new SETUP_TOKEN into .noc-env master (value not shown)'
+          fi
+          # The app only reads .env at startup — after a Hostinger webhook
+          # deploy .env can be missing the token even though the master has
+          # it (the audit run on 2026-07-13 401'd exactly this way). Ensure
+          # the running app actually has this token: sync .env + restart.
+          if ! grep -qxF "SETUP_TOKEN=$token" .env 2>/dev/null; then
+            grep -vE '^SETUP_TOKEN=' .env > .env.tmp 2>/dev/null || true
+            printf 'SETUP_TOKEN=%s\n' "$token" >> .env.tmp
+            mv .env.tmp .env && chmod 600 .env
+            mkdir -p tmp && touch tmp/restart.txt
+            echo 'env_synced_and_restart_signalled'
           fi
           echo '--- merge viaczechia coordinate duplicates ---'
-          curl -fsS --max-time 60 -X POST -H "Authorization: Bearer $token" \
-            "$PUBLIC_URL/api/setup/merge-viaczechia-duplicates?confirm=yes"
+          resp_file=$(mktemp)
+          attempt=0
+          while :; do
+            attempt=$((attempt+1))
+            code=$(curl -s -o "$resp_file" -w '%{http_code}' --max-time 60 -X POST \
+              -H "Authorization: Bearer $token" \
+              "$PUBLIC_URL/api/setup/merge-viaczechia-duplicates?confirm=yes") || code=000
+            if [ "$code" = 200 ]; then break; fi
+            echo "POST attempt $attempt -> HTTP $code"
+            if [ "$attempt" -ge 10 ]; then
+              echo "merge POST failed after $attempt attempts:" >&2
+              cat "$resp_file" >&2 || true
+              exit 1
+            fi
+            sleep 10
+          done
+          cat "$resp_file"
           echo
           echo '--- re-crawl viaczechia (refresh descriptions) ---'
           curl -fsS --max-time 120 -X POST -H "Authorization: Bearer $token" \
