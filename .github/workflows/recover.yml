@@ -617,10 +617,13 @@ jobs:
             "APP_PATH='$APP_PATH' PUBLIC_URL='$PUBLIC_URL' bash -se" <<'EOF'
           set -eu
           cd "$APP_PATH"
+          MASTER="$HOME/.noc-env"
           token=""
-          if [ -f .env ]; then
-            token=$(grep -E '^SETUP_TOKEN=' .env | head -1 | cut -d= -f2-) || true
-          fi
+          for f in .env "$MASTER"; do
+            if [ -z "$token" ] && [ -f "$f" ]; then
+              token=$(grep -E '^SETUP_TOKEN=' "$f" | head -1 | cut -d= -f2-) || true
+            fi
+          done
           if [ -z "$token" ]; then
             for e in /proc/[0-9]*/environ; do
               t=$(cat "$e" 2>/dev/null | tr '\0' '\n' | grep -E '^SETUP_TOKEN=' | head -1 | cut -d= -f2-) || true
@@ -628,12 +631,36 @@ jobs:
             done
           fi
           if [ -z "$token" ]; then
-            echo "SETUP_TOKEN not found in APP_PATH/.env nor any /proc environ." >&2
-            exit 1
+            # Self-provision: persist into the $HOME/.noc-env master (so
+            # deploys restoring .env from it keep the token) AND .env, then
+            # restart so the app loads it. Value never leaves the box.
+            token=$(openssl rand -hex 32 2>/dev/null || tr -dc a-f0-9 < /dev/urandom | head -c 64)
+            touch "$MASTER" && chmod 600 "$MASTER"
+            printf 'SETUP_TOKEN=%s\n' "$token" >> "$MASTER"
+            touch .env && chmod 600 .env
+            printf 'SETUP_TOKEN=%s\n' "$token" >> .env
+            echo 'generated new SETUP_TOKEN into .noc-env master + .env (value not shown)'
+            mkdir -p tmp && touch tmp/restart.txt
+            echo 'restart_signalled'
           fi
           echo '--- prod places audit ---'
-          curl -fsS --max-time 60 -X POST -H "Authorization: Bearer $token" \
-            "$PUBLIC_URL/api/setup/audit-places"
+          resp_file=$(mktemp)
+          attempt=0
+          while :; do
+            attempt=$((attempt+1))
+            code=$(curl -s -o "$resp_file" -w '%{http_code}' --max-time 25 -X POST \
+              -H "Authorization: Bearer $token" \
+              "$PUBLIC_URL/api/setup/audit-places") || code=000
+            if [ "$code" = 200 ]; then break; fi
+            echo "POST attempt $attempt -> HTTP $code"
+            if [ "$attempt" -ge 8 ]; then
+              echo "audit POST failed after $attempt attempts:" >&2
+              cat "$resp_file" >&2 || true
+              exit 1
+            fi
+            sleep 8
+          done
+          cat "$resp_file"
           echo
           echo 'audit_complete'
           EOF
@@ -708,9 +735,12 @@ jobs:
           fi
           if [ -z "$token" ]; then
             token=$(openssl rand -hex 32 2>/dev/null || tr -dc a-f0-9 < /dev/urandom | head -c 64)
+            MASTER="$HOME/.noc-env"
+            touch "$MASTER" && chmod 600 "$MASTER"
+            printf 'SETUP_TOKEN=%s\n' "$token" >> "$MASTER"
             touch .env && chmod 600 .env
             printf 'SETUP_TOKEN=%s\n' "$token" >> .env
-            echo "generated new SETUP_TOKEN into $APP_PATH/.env (value not shown)"
+            echo "generated new SETUP_TOKEN into .noc-env master + $APP_PATH/.env (value not shown)"
             mkdir -p tmp && touch tmp/restart.txt
             echo "touched tmp/restart.txt so the app restarts and loads .env"
           else
