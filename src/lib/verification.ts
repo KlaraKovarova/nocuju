@@ -10,6 +10,10 @@ import { placeReports, places, placeVisits } from "@/db/schema";
 //  - visitsCount: "byl/a jsem tady" visits from registered users
 //  - infoSediCount: positive community reports (category `info-sedi`,
 //    dismissed ones excluded)
+// Community confirmations are shown on the place card only once they reach
+// this threshold (NOC-99) — below it the signal is too weak to display.
+export const INFO_SEDI_DISPLAY_THRESHOLD = 3;
+
 export type AdminVerification = {
   at: Date;
   by: string | null;

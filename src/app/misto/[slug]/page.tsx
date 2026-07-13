@@ -20,6 +20,10 @@ import {
 } from "@/db/schema";
 import { slugifyRegion } from "@/lib/regions";
 import { getSiteUrl } from "@/lib/site-url";
+import {
+  INFO_SEDI_DISPLAY_THRESHOLD,
+  getPlaceVerificationSummary,
+} from "@/lib/verification";
 
 const CATEGORY_LABEL: Record<string, string> = {
   utulna: "Útulna",
@@ -213,9 +217,11 @@ function HeroPlaceholder({ name, category }: { name: string; category: string | 
 function Chip({
   children,
   tone = "zinc",
+  title,
 }: {
   children: React.ReactNode;
   tone?: "emerald" | "sky" | "zinc" | "amber";
+  title?: string;
 }) {
   const styles: Record<string, string> = {
     emerald: "bg-emerald-100 text-emerald-800",
@@ -225,6 +231,7 @@ function Chip({
   };
   return (
     <span
+      title={title}
       className={`rounded-full px-3 py-1 text-sm font-medium ${styles[tone]}`}
     >
       {children}
@@ -244,7 +251,10 @@ export default async function MistoDetailPage({
   const data = await loadPlace(slug);
   if (!data) notFound();
 
-  const reportSent = sp.reportSent === "1";
+  const reportSentRaw = Array.isArray(sp.reportSent)
+    ? sp.reportSent[0]
+    : sp.reportSent;
+  const reportSent = reportSentRaw === "1" || reportSentRaw === "confirm";
   const reportErrorRaw = Array.isArray(sp.reportError)
     ? sp.reportError[0]
     : sp.reportError;
@@ -255,6 +265,8 @@ export default async function MistoDetailPage({
       : "idle";
 
   const { place, location, categorySlugs, amenityLabels, images } = data;
+  const verification = await getPlaceVerificationSummary(Number(place.id));
+  const infoSediCount = verification?.infoSediCount ?? 0;
   const heroImage = images[0];
   const lat = Number(place.lat);
   const lng = Number(place.lng);
@@ -335,6 +347,14 @@ export default async function MistoDetailPage({
             {typeof place.elevationM === "number" && (
               <Chip>{place.elevationM} m n. m.</Chip>
             )}
+            {infoSediCount >= INFO_SEDI_DISPLAY_THRESHOLD && (
+              <Chip
+                tone="sky"
+                title="Tolik lidí přes veřejný formulář potvrdilo, že info k místu sedí. Není to oficiální ověření týmem NOC."
+              >
+                👍 {infoSediCount}× potvrzeno komunitou
+              </Chip>
+            )}
           </div>
 
           {place.description && (
@@ -393,6 +413,7 @@ export default async function MistoDetailPage({
             placeId={Number(place.id)}
             slug={place.slug}
             status={reportStatus}
+            sentKind={reportSentRaw === "confirm" ? "confirm" : "problem"}
             errorMessage={reportErrorRaw ?? null}
           />
 

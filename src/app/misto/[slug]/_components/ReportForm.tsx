@@ -11,11 +11,13 @@ export function ReportForm({
   placeId,
   slug,
   status,
+  sentKind = "problem",
   errorMessage,
 }: {
   placeId: number;
   slug: string;
   status: "idle" | "sent" | "error";
+  sentKind?: "problem" | "confirm";
   errorMessage?: string | null;
 }) {
   const open = status !== "idle";
@@ -27,7 +29,7 @@ export function ReportForm({
       >
         <summary className="flex cursor-pointer items-center justify-between gap-3 list-none">
           <span className="text-sm font-semibold text-zinc-900">
-            Nahlásit problém s místem
+            Nahlásit problém nebo potvrdit info
           </span>
           <span className="text-xs text-zinc-500 group-open:hidden">
             Otevřít formulář ↓
@@ -43,10 +45,21 @@ export function ReportForm({
               role="status"
               className="rounded border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900"
             >
-              <p className="font-semibold">Díky, koukneme na to.</p>
-              <p className="mt-1 text-emerald-800">
-                Pokud jsi nechal/a e-mail, ozveme se, jakmile to vyřešíme.
-              </p>
+              {sentKind === "confirm" ? (
+                <>
+                  <p className="font-semibold">Díky za potvrzení! 👍</p>
+                  <p className="mt-1 text-emerald-800">
+                    Pomáháš ostatním vědět, že info k tomuhle místu sedí.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold">Díky, koukneme na to.</p>
+                  <p className="mt-1 text-emerald-800">
+                    Pokud jsi nechal/a e-mail, ozveme se, jakmile to vyřešíme.
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <>
@@ -59,8 +72,8 @@ export function ReportForm({
                 </p>
               )}
               <p className="mb-3 text-sm text-zinc-600">
-                Něco nesedí? Útulna se rozpadla, foto neodpovídá, info je
-                zastaralé? Dej nám vědět.
+                Byl(a) jsi tam? Potvrď, že info sedí — nebo nám dej vědět, co
+                nesedí. Útulna se rozpadla, foto neodpovídá, info je zastaralé…
               </p>
               <form
                 method="post"
@@ -90,6 +103,19 @@ export function ReportForm({
                     O co jde?
                   </legend>
                   <div className="space-y-2">
+                    <label className="flex cursor-pointer items-center gap-2 rounded border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-sm font-medium text-emerald-900">
+                      <input
+                        type="radio"
+                        name="category"
+                        value="info-sedi"
+                        required
+                        className="text-emerald-600 focus:ring-emerald-600"
+                      />
+                      👍 Info sedí, byl(a) jsem tam
+                    </label>
+                    <p className="pt-1 text-xs text-zinc-500">
+                      …nebo nahlas problém:
+                    </p>
                     {CATEGORY_ORDER.map((cat) => (
                       <label
                         key={cat}

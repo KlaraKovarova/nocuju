@@ -33,9 +33,13 @@ function redirectWithError(
   return NextResponse.redirect(url, 303);
 }
 
-function redirectWithSuccess(request: NextRequest, slug: string): NextResponse {
+function redirectWithSuccess(
+  request: NextRequest,
+  slug: string,
+  category?: string,
+): NextResponse {
   const url = new URL(`/misto/${slug}`, request.url);
-  url.searchParams.set("reportSent", "1");
+  url.searchParams.set("reportSent", category === "info-sedi" ? "confirm" : "1");
   url.hash = "nahlasit";
   return NextResponse.redirect(url, 303);
 }
@@ -94,7 +98,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Honeypot — silently accept and bail.
   if (body.honeypot.trim().length > 0) {
     if (isJson) return NextResponse.json({ ok: true });
-    if (body.slug) return redirectWithSuccess(request, body.slug);
+    if (body.slug) return redirectWithSuccess(request, body.slug, body.category);
     return NextResponse.json({ ok: true });
   }
 
@@ -166,5 +170,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   });
 
   if (isJson) return NextResponse.json({ ok: true });
-  return redirectWithSuccess(request, placeRow.slug);
+  return redirectWithSuccess(request, placeRow.slug, body.category);
 }
