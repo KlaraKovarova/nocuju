@@ -598,30 +598,45 @@ jobs:
 
       # The audit/cleanup endpoints live in the running Next.js app
       # (/api/setup/audit-places, /api/setup/cleanup-seed-places). We invoke
-      # them through the public domain so no script needs to be present on the
-      # Hostinger box. SETUP_TOKEN is read from the live Node process's
-      # /proc/<pid>/environ over a short SSH session (CloudLinux allows same-UID
-      # reads). This avoids npx/tsx downloads that previously timed out under
-      # CloudLinux resource caps.
+      # them from the box so no script needs to be present on the Hostinger
+      # box. SETUP_TOKEN discovery mirrors db-migrate-verification: since
+      # NOC-102 the token lives in APP_PATH/.env (loaded by the standalone
+      # server at startup via loadEnvConfig), so it is NOT in the process
+      # spawn environ — read .env first, /proc environ as fallback.
       - name: db-audit-places
         if: inputs.action == 'db-audit-places'
         env:
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           PORT: ${{ steps.load_ssh.outputs.port }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
           PUBLIC_URL: ${{ secrets.HOSTINGER_PUBLIC_URL || 'https://www.nocuju.cz' }}
         run: |
           set -eu
-          token=$(ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
-            'pid=$(pgrep -u "$(id -u)" -f '\''lsnode\.js|node.*server\.js'\'' | head -1); [ -n "$pid" ] && tr "\0" "\n" < "/proc/$pid/environ" | grep -E "^SETUP_TOKEN=" | sed "s/^SETUP_TOKEN=//"' || true)
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
+            "APP_PATH='$APP_PATH' PUBLIC_URL='$PUBLIC_URL' bash -se" <<'EOF'
+          set -eu
+          cd "$APP_PATH"
+          token=""
+          if [ -f .env ]; then
+            token=$(grep -E '^SETUP_TOKEN=' .env | head -1 | cut -d= -f2-) || true
+          fi
           if [ -z "$token" ]; then
-            echo "::error::SETUP_TOKEN not found in live Node process /proc environ."
+            for e in /proc/[0-9]*/environ; do
+              t=$(cat "$e" 2>/dev/null | tr '\0' '\n' | grep -E '^SETUP_TOKEN=' | head -1 | cut -d= -f2-) || true
+              if [ -n "$t" ]; then token="$t"; break; fi
+            done
+          fi
+          if [ -z "$token" ]; then
+            echo "SETUP_TOKEN not found in APP_PATH/.env nor any /proc environ." >&2
             exit 1
           fi
           echo '--- prod places audit ---'
-          curl -fsS -X POST -H "Authorization: Bearer $token" \
-            "$PUBLIC_URL/api/setup/audit-places" | jq .
+          curl -fsS --max-time 60 -X POST -H "Authorization: Bearer $token" \
+            "$PUBLIC_URL/api/setup/audit-places"
+          echo
           echo 'audit_complete'
+          EOF
 
       - name: db-cleanup-seed-places
         if: inputs.action == 'db-cleanup-seed-places'
@@ -629,19 +644,34 @@ jobs:
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           PORT: ${{ steps.load_ssh.outputs.port }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
           PUBLIC_URL: ${{ secrets.HOSTINGER_PUBLIC_URL || 'https://www.nocuju.cz' }}
         run: |
           set -eu
-          token=$(ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
-            'pid=$(pgrep -u "$(id -u)" -f '\''lsnode\.js|node.*server\.js'\'' | head -1); [ -n "$pid" ] && tr "\0" "\n" < "/proc/$pid/environ" | grep -E "^SETUP_TOKEN=" | sed "s/^SETUP_TOKEN=//"' || true)
+          ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
+            "APP_PATH='$APP_PATH' PUBLIC_URL='$PUBLIC_URL' bash -se" <<'EOF'
+          set -eu
+          cd "$APP_PATH"
+          token=""
+          if [ -f .env ]; then
+            token=$(grep -E '^SETUP_TOKEN=' .env | head -1 | cut -d= -f2-) || true
+          fi
           if [ -z "$token" ]; then
-            echo "::error::SETUP_TOKEN not found in live Node process /proc environ."
+            for e in /proc/[0-9]*/environ; do
+              t=$(cat "$e" 2>/dev/null | tr '\0' '\n' | grep -E '^SETUP_TOKEN=' | head -1 | cut -d= -f2-) || true
+              if [ -n "$t" ]; then token="$t"; break; fi
+            done
+          fi
+          if [ -z "$token" ]; then
+            echo "SETUP_TOKEN not found in APP_PATH/.env nor any /proc environ." >&2
             exit 1
           fi
           echo '--- prod places cleanup (seed:// only) ---'
-          curl -fsS -X POST -H "Authorization: Bearer $token" \
-            "$PUBLIC_URL/api/setup/cleanup-seed-places?confirm=yes" | jq .
+          curl -fsS --max-time 60 -X POST -H "Authorization: Bearer $token" \
+            "$PUBLIC_URL/api/setup/cleanup-seed-places?confirm=yes"
+          echo
           echo 'cleanup_complete'
+          EOF
 
       - name: db-migrate-verification
         if: inputs.action == 'db-migrate-verification'
