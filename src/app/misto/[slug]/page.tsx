@@ -8,6 +8,7 @@ import { CategoryIcon } from "@/components/CategoryIcon";
 import { MiniMap } from "@/components/MiniMap";
 import { SaveToggle } from "@/components/SaveToggle";
 import { ReportForm } from "./_components/ReportForm";
+import { VisitSection, type VisitStatus } from "./_components/VisitSection";
 import { db } from "@/db/client";
 import {
   amenities,
@@ -20,6 +21,7 @@ import {
 } from "@/db/schema";
 import { slugifyRegion } from "@/lib/regions";
 import { getSiteUrl } from "@/lib/site-url";
+import { getSessionUser } from "@/lib/user-auth";
 import {
   INFO_SEDI_DISPLAY_THRESHOLD,
   getPlaceVerificationSummary,
@@ -101,6 +103,18 @@ async function loadPlace(slug: string): Promise<DetailData | null> {
 function truncate(text: string, max = 200): string {
   if (text.length <= max) return text;
   return text.slice(0, max - 1).trimEnd() + "…";
+}
+
+function formatVerifiedDate(d: Date): string {
+  try {
+    return new Intl.DateTimeFormat("cs-CZ", {
+      day: "numeric",
+      month: "numeric",
+      year: "numeric",
+    }).format(d);
+  } catch {
+    return "";
+  }
 }
 
 export async function generateMetadata({
@@ -264,9 +278,29 @@ export default async function MistoDetailPage({
       ? "error"
       : "idle";
 
+  const visitErrorRaw = Array.isArray(sp.visitError)
+    ? sp.visitError[0]
+    : sp.visitError;
+  const visitStatus: VisitStatus =
+    sp.visitSaved === "1"
+      ? "saved"
+      : sp.visitDuplicate === "1"
+        ? "duplicate"
+        : visitErrorRaw
+          ? "error"
+          : "idle";
+
   const { place, location, categorySlugs, amenityLabels, images } = data;
-  const verification = await getPlaceVerificationSummary(Number(place.id));
+  const [verification, sessionUser] = await Promise.all([
+    getPlaceVerificationSummary(Number(place.id)),
+    getSessionUser(),
+  ]);
   const infoSediCount = verification?.infoSediCount ?? 0;
+  const visitsCount = verification?.visitsCount ?? 0;
+  const adminVerified = verification?.adminVerified ?? null;
+  const loginHref = `/ucet/prihlaseni?${new URLSearchParams({
+    next: `/misto/${place.slug}#navsteva`,
+  })}`;
   const heroImage = images[0];
   const lat = Number(place.lat);
   const lng = Number(place.lng);
@@ -328,6 +362,21 @@ export default async function MistoDetailPage({
           </div>
 
           <div className="mt-6 flex flex-wrap gap-2">
+            {adminVerified ? (
+              <span
+                title={`Záznam ověřil tým NOC proti fotce, mapě nebo veřejnému zdroji${adminVerified.by ? ` (${adminVerified.by})` : ""}.`}
+                className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-sm font-semibold text-white"
+              >
+                ✓ Ověřeno {formatVerifiedDate(adminVerified.at)}
+              </span>
+            ) : (
+              <span
+                title="Záznam zatím neprošel ověřením týmem NOC. Data pocházejí z uvedeného zdroje."
+                className="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-zinc-50 px-3 py-1 text-sm font-medium text-zinc-600"
+              >
+                Zdroj dat: {sourceLabel}
+              </span>
+            )}
             {categorySlugs.map((slug) => (
               <Chip key={slug} tone="emerald">
                 {CATEGORY_LABEL[slug] ?? slug}
@@ -353,6 +402,14 @@ export default async function MistoDetailPage({
                 title="Tolik lidí přes veřejný formulář potvrdilo, že info k místu sedí. Není to oficiální ověření týmem NOC."
               >
                 👍 {infoSediCount}× potvrzeno komunitou
+              </Chip>
+            )}
+            {visitsCount > 0 && (
+              <Chip
+                tone="sky"
+                title="Tolikrát tu přespali registrovaní uživatelé. Není to oficiální ověření týmem NOC."
+              >
+                🥾 {visitsCount}× přespáno
               </Chip>
             )}
           </div>
@@ -408,6 +465,15 @@ export default async function MistoDetailPage({
               </a>
             </p>
           </section>
+
+          <VisitSection
+            placeId={Number(place.id)}
+            visitsCount={visitsCount}
+            user={sessionUser}
+            loginHref={loginHref}
+            status={visitStatus}
+            errorMessage={visitErrorRaw ?? null}
+          />
 
           <ReportForm
             placeId={Number(place.id)}

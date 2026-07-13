@@ -154,7 +154,9 @@ export const placeVisits = mysqlTable(
     id: serial("id").primaryKey(),
     placeId: int("place_id").notNull(),
     userId: int("user_id").notNull(),
-    visitedOn: date("visited_on").notNull(),
+    // mode "string" ("YYYY-MM-DD"): mysql2 serializes Date objects in the
+    // server's local timezone, which can shift a UTC-midnight date by a day.
+    visitedOn: date("visited_on", { mode: "string" }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [

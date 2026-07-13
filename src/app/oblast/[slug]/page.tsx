@@ -12,6 +12,7 @@ import {
   places,
 } from "@/db/schema";
 import { loadRegionRows, type RegionRow } from "@/lib/regions";
+import { getPlaceVerificationSummaries } from "@/lib/verification";
 
 import { PlaceCard, type PlaceCardData } from "@/app/objevit/_components/PlaceCard";
 
@@ -46,7 +47,7 @@ async function loadRegionPlaces(regionName: string): Promise<PlaceCardData[]> {
   const placeIds = rows.map((r) => Number(r.id));
   if (placeIds.length === 0) return [];
 
-  const [categoryRows, imageRows] = await Promise.all([
+  const [categoryRows, imageRows, verificationByPlace] = await Promise.all([
     db
       .select({ placeId: placeCategories.placeId, slug: categories.slug })
       .from(placeCategories)
@@ -61,6 +62,7 @@ async function loadRegionPlaces(regionName: string): Promise<PlaceCardData[]> {
       .from(placeImages)
       .where(inArray(placeImages.placeId, placeIds))
       .orderBy(asc(placeImages.sortOrder)),
+    getPlaceVerificationSummaries(placeIds),
   ]);
 
   const categoriesByPlace = new Map<number, string[]>();
@@ -90,6 +92,9 @@ async function loadRegionPlaces(regionName: string): Promise<PlaceCardData[]> {
     region: row.region ?? null,
     categorySlugs: categoriesByPlace.get(Number(row.id)) ?? [],
     imageUrl: firstImageByPlace.get(Number(row.id)) ?? null,
+    visitsCount: verificationByPlace.get(Number(row.id))?.visitsCount ?? 0,
+    adminVerifiedAt:
+      verificationByPlace.get(Number(row.id))?.adminVerified?.at ?? null,
   }));
 }
 

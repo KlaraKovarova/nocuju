@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { SaveToggle } from "@/components/SaveToggle";
 import type { Place } from "@/db/schema";
+import { formatVisitCount } from "@/lib/visits";
 
 export type PlaceCardData = {
   place: Pick<
@@ -13,6 +14,11 @@ export type PlaceCardData = {
   region: string | null;
   categorySlugs: string[];
   imageUrl: string | null;
+  visitsCount: number;
+  // Set only for admin-verified places (variant 2, NOC-98) — renders the
+  // official "✓ Ověřeno" badge. Optional so list queries can adopt it
+  // incrementally.
+  adminVerifiedAt?: Date | null;
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -50,7 +56,8 @@ function PlaceholderImage({
 }
 
 export function PlaceCard({ data }: { data: PlaceCardData }) {
-  const { place, city, region, categorySlugs, imageUrl } = data;
+  const { place, city, region, categorySlugs, imageUrl, visitsCount } = data;
+  const adminVerified = Boolean(data.adminVerifiedAt);
   return (
     <Link
       href={`/misto/${place.slug}`}
@@ -69,6 +76,14 @@ export function PlaceCard({ data }: { data: PlaceCardData }) {
         <div className="absolute right-2 top-2">
           <SaveToggle slug={place.slug} />
         </div>
+        {adminVerified && (
+          <span
+            title="Záznam ověřil tým NOC proti fotce, mapě nebo veřejnému zdroji."
+            className="absolute left-2 top-2 rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white"
+          >
+            ✓ Ověřeno
+          </span>
+        )}
       </div>
       <div className="flex flex-1 flex-col gap-2 p-4">
         <h3 className="text-lg font-semibold text-zinc-900 group-hover:text-emerald-700">
@@ -101,6 +116,14 @@ export function PlaceCard({ data }: { data: PlaceCardData }) {
           {typeof place.sleeps === "number" && (
             <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
               {place.sleeps} míst
+            </span>
+          )}
+          {visitsCount > 0 && (
+            <span
+              title="Návštěvy nahlášené registrovanými uživateli — není to oficiální ověření."
+              className="rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600"
+            >
+              🥾 {formatVisitCount(visitsCount)}
             </span>
           )}
         </div>

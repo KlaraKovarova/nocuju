@@ -8,6 +8,7 @@ import {
   placeImages,
   places,
 } from "@/db/schema";
+import { getPlaceVerificationSummaries } from "@/lib/verification";
 
 import { type PlaceCardData } from "../objevit/_components/PlaceCard";
 
@@ -35,7 +36,7 @@ async function loadAllPlaceCards(): Promise<PlaceCardData[]> {
 
   const placeIds = rows.map((r) => Number(r.id));
 
-  const [categoryRows, imageRows] = await Promise.all([
+  const [categoryRows, imageRows, verificationByPlace] = await Promise.all([
     db
       .select({
         placeId: placeCategories.placeId,
@@ -53,6 +54,7 @@ async function loadAllPlaceCards(): Promise<PlaceCardData[]> {
       .from(placeImages)
       .where(inArray(placeImages.placeId, placeIds))
       .orderBy(asc(placeImages.sortOrder)),
+    getPlaceVerificationSummaries(placeIds),
   ]);
 
   const categorySlugsByPlace = new Map<number, string[]>();
@@ -82,6 +84,9 @@ async function loadAllPlaceCards(): Promise<PlaceCardData[]> {
     region: row.region ?? null,
     categorySlugs: categorySlugsByPlace.get(Number(row.id)) ?? [],
     imageUrl: firstImageByPlace.get(Number(row.id)) ?? null,
+    visitsCount: verificationByPlace.get(Number(row.id))?.visitsCount ?? 0,
+    adminVerifiedAt:
+      verificationByPlace.get(Number(row.id))?.adminVerified?.at ?? null,
   }));
 }
 

@@ -9,6 +9,7 @@ import {
   places,
 } from "@/db/schema";
 import { loadRegionRows } from "@/lib/regions";
+import { getPlaceVerificationSummaries } from "@/lib/verification";
 
 import { SearchInput } from "@/components/SearchInput";
 
@@ -129,7 +130,7 @@ async function loadPlaces(filters: ParsedFilters): Promise<{
   const placeIds = rows.map((r) => Number(r.id));
   if (placeIds.length === 0) return { cards: [], total };
 
-  const [categoryRows, imageRows] = await Promise.all([
+  const [categoryRows, imageRows, verificationByPlace] = await Promise.all([
     db
       .select({
         placeId: placeCategories.placeId,
@@ -147,6 +148,7 @@ async function loadPlaces(filters: ParsedFilters): Promise<{
       .from(placeImages)
       .where(inArray(placeImages.placeId, placeIds))
       .orderBy(asc(placeImages.sortOrder)),
+    getPlaceVerificationSummaries(placeIds),
   ]);
 
   const categorySlugsByPlace = new Map<number, string[]>();
@@ -176,6 +178,9 @@ async function loadPlaces(filters: ParsedFilters): Promise<{
     region: row.region ?? null,
     categorySlugs: categorySlugsByPlace.get(Number(row.id)) ?? [],
     imageUrl: firstImageByPlace.get(Number(row.id)) ?? null,
+    visitsCount: verificationByPlace.get(Number(row.id))?.visitsCount ?? 0,
+    adminVerifiedAt:
+      verificationByPlace.get(Number(row.id))?.adminVerified?.at ?? null,
   }));
 
   return { cards, total };
