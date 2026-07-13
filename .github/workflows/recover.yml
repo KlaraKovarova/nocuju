@@ -21,6 +21,7 @@ on:
           - db-schema-push
           - db-audit-places
           - db-cleanup-seed-places
+          - db-migrate-verification
           - diagnose
           - reap-workers
       lines:
@@ -623,5 +624,27 @@ jobs:
           curl -fsS -X POST -H "Authorization: Bearer $token" \
             "$PUBLIC_URL/api/setup/cleanup-seed-places?confirm=yes" | jq .
           echo 'cleanup_complete'
+
+      - name: db-migrate-verification
+        if: inputs.action == 'db-migrate-verification'
+        env:
+          USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          PORT: ${{ steps.load_ssh.outputs.port }}
+          PUBLIC_URL: ${{ secrets.HOSTINGER_PUBLIC_URL || 'https://www.nocuju.cz' }}
+        run: |
+          set -eu
+          token=$(ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
+            'pid=$(pgrep -u "$(id -u)" -f '\''lsnode\.js|node.*server\.js'\'' | head -1); [ -n "$pid" ] && tr "\0" "\n" < "/proc/$pid/environ" | grep -E "^SETUP_TOKEN=" | sed "s/^SETUP_TOKEN=//"' || true)
+          if [ -z "$token" ]; then
+            echo "::error::SETUP_TOKEN not found in live Node process /proc environ."
+            exit 1
+          fi
+          echo '--- NOC-93 verification schema migration (idempotent) ---'
+          curl -fsS -X POST -H "Authorization: Bearer $token" \
+            "$PUBLIC_URL/api/setup/migrate-verification" | jq .
+          echo '--- post-migration status check ---'
+          curl -fsS "$PUBLIC_URL/api/setup/migrate-verification" | jq .status
+          echo 'migration_complete'
 
       # rollback shares the deploy-ref step above (matched by `if:`).
