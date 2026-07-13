@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest, type NextResponse } from "next/server";
 
 import { db } from "@/db/client";
 import { placeReports, reportStatusEnum } from "@/db/schema";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
+import { seeOther } from "@/lib/redirects";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,22 +18,21 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   if (!(await isAdminAuthenticated())) {
-    const url = new URL("/admin/login", request.url);
-    url.searchParams.set("next", "/admin/reports");
-    return NextResponse.redirect(url, 303);
+    const query = new URLSearchParams({ next: "/admin/reports" });
+    return seeOther(`/admin/login?${query}`);
   }
 
   const { id } = await params;
   const reportId = parseInt(id, 10);
   if (!Number.isFinite(reportId) || reportId <= 0) {
-    return NextResponse.redirect(new URL("/admin/reports", request.url), 303);
+    return seeOther("/admin/reports");
   }
 
   const form = await request.formData();
   const statusRaw = String(form.get("status") ?? "");
   const filterRaw = String(form.get("filter") ?? "open");
   if (!STATUS_SET.has(statusRaw)) {
-    return NextResponse.redirect(new URL("/admin/reports", request.url), 303);
+    return seeOther("/admin/reports");
   }
   const filter = FILTER_SET.has(filterRaw) ? filterRaw : "open";
 
@@ -45,8 +45,6 @@ export async function POST(
 
   revalidatePath("/admin/reports");
 
-  const target = new URL("/admin/reports", request.url);
-  target.searchParams.set("status", filter);
-  target.searchParams.set("updated", "1");
-  return NextResponse.redirect(target, 303);
+  const query = new URLSearchParams({ status: filter, updated: "1" });
+  return seeOther(`/admin/reports?${query}`);
 }

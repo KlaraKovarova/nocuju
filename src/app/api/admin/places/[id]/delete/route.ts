@@ -1,7 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest, type NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
 import { isAdminAuthenticated } from "@/lib/admin-auth";
+import { seeOther } from "@/lib/redirects";
 import { deletePlace } from "@/app/admin/places/_lib/places-write";
 
 export const dynamic = "force-dynamic";
@@ -14,13 +15,12 @@ export async function POST(
   const { id } = await params;
   const placeId = parseInt(id, 10);
   if (!Number.isFinite(placeId) || placeId <= 0) {
-    return NextResponse.redirect(new URL("/admin/places", request.url), 303);
+    return seeOther("/admin/places");
   }
 
   if (!(await isAdminAuthenticated())) {
-    const url = new URL("/admin/login", request.url);
-    url.searchParams.set("next", "/admin/places");
-    return NextResponse.redirect(url, 303);
+    const query = new URLSearchParams({ next: "/admin/places" });
+    return seeOther(`/admin/login?${query}`);
   }
 
   const removedSlug = await deletePlace(placeId);
@@ -30,7 +30,5 @@ export async function POST(
   revalidatePath("/mapa");
   if (removedSlug) revalidatePath(`/misto/${removedSlug}`);
 
-  const target = new URL("/admin/places", request.url);
-  target.searchParams.set("deleted", "1");
-  return NextResponse.redirect(target, 303);
+  return seeOther("/admin/places?deleted=1");
 }

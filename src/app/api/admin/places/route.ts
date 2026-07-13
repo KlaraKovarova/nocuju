@@ -1,7 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest, type NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
 import { isAdminAuthenticated } from "@/lib/admin-auth";
+import { seeOther } from "@/lib/redirects";
 
 import {
   FormError,
@@ -13,20 +14,18 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-function loginRedirect(request: NextRequest): NextResponse {
-  const url = new URL("/admin/login", request.url);
-  url.searchParams.set("next", "/admin/places/new");
-  return NextResponse.redirect(url, 303);
+function loginRedirect(): NextResponse {
+  const query = new URLSearchParams({ next: "/admin/places/new" });
+  return seeOther(`/admin/login?${query}`);
 }
 
-function errorRedirect(request: NextRequest, message: string): NextResponse {
-  const url = new URL("/admin/places/new", request.url);
-  url.searchParams.set("error", message);
-  return NextResponse.redirect(url, 303);
+function errorRedirect(message: string): NextResponse {
+  const query = new URLSearchParams({ error: message });
+  return seeOther(`/admin/places/new?${query}`);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!(await isAdminAuthenticated())) return loginRedirect(request);
+  if (!(await isAdminAuthenticated())) return loginRedirect();
 
   const formData = await request.formData();
   try {
@@ -39,12 +38,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     revalidatePath("/mapa");
     revalidatePath(`/misto/${parsed.slug}`);
 
-    const target = new URL(`/admin/places/${placeId}`, request.url);
-    target.searchParams.set("saved", "1");
-    return NextResponse.redirect(target, 303);
+    return seeOther(`/admin/places/${placeId}?saved=1`);
   } catch (err) {
     if (err instanceof FormError) {
-      return errorRedirect(request, err.message);
+      return errorRedirect(err.message);
     }
     throw err;
   }

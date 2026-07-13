@@ -1,21 +1,22 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest, type NextResponse } from "next/server";
 
 import {
   buildSessionCookie,
   getExpectedPassword,
   signAdminSession,
 } from "@/lib/admin-auth";
+import { seeOther } from "@/lib/redirects";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function sanitizeNext(value: string | null): string {
-  if (!value) return "/admin/places";
-  return value.startsWith("/admin") ? value : "/admin/places";
-}
-
-function redirectResponse(url: URL): NextResponse {
-  return NextResponse.redirect(url, 303);
+  if (!value || !value.startsWith("/admin")) return "/admin/places";
+  // Normalize through URL so `..` segments and raw control characters can't
+  // escape /admin or corrupt the Location header.
+  const url = new URL(value, "http://sanitize.invalid");
+  const path = url.pathname + url.search;
+  return path.startsWith("/admin") ? path : "/admin/places";
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -23,17 +24,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const password = String(form.get("password") ?? "");
   const next = sanitizeNext(String(form.get("next") ?? ""));
 
-  const loginUrl = new URL("/admin/login", request.url);
-
   if (password !== getExpectedPassword()) {
-    loginUrl.searchParams.set("error", "1");
-    if (next !== "/admin/places") loginUrl.searchParams.set("next", next);
-    return redirectResponse(loginUrl);
+    const query = new URLSearchParams({ error: "1" });
+    if (next !== "/admin/places") query.set("next", next);
+    return seeOther(`/admin/login?${query}`);
   }
 
   const token = await signAdminSession();
-  const targetUrl = new URL(next, request.url);
-  const response = redirectResponse(targetUrl);
+  const response = seeOther(next);
   response.cookies.set(buildSessionCookie(token));
   return response;
 }
