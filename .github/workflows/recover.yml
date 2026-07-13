@@ -631,20 +631,49 @@ jobs:
           USER: ${{ secrets.HOSTINGER_SSH_USER }}
           HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
           PORT: ${{ steps.load_ssh.outputs.port }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
           PUBLIC_URL: ${{ secrets.HOSTINGER_PUBLIC_URL || 'https://www.nocuju.cz' }}
         run: |
           set -eu
-          token=$(ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
-            'pid=$(pgrep -u "$(id -u)" -f '\''lsnode\.js|node.*server\.js'\'' | head -1); [ -n "$pid" ] && tr "\0" "\n" < "/proc/$pid/environ" | grep -E "^SETUP_TOKEN=" | sed "s/^SETUP_TOKEN=//"' || true)
-          if [ -z "$token" ]; then
-            echo "::error::SETUP_TOKEN not found in live Node process /proc environ."
-            exit 1
+          # /proc/<pid>/environ only shows exec-time env; values loaded from
+          # .env files by Next.js never appear there, so fall back to the
+          # .env candidates on the box, then to an admin session.
+          fetch_env_var() {
+            ssh -i ~/.ssh/id_recover -p "$PORT" -o BatchMode=yes "$USER@$HOST" \
+              "name=$1; pid=\$(pgrep -u \"\$(id -u)\" -f 'lsnode\.js|node.*server\.js' | head -1); \
+               { [ -n \"\$pid\" ] && tr '\0' '\n' < \"/proc/\$pid/environ\" | grep -E \"^\$name=\" | head -1 | cut -d= -f2-; } || true; \
+               for f in \"$APP_PATH/nodejs/.env\" \"$APP_PATH/.env\" \"$APP_PATH/.env.production\" \"\$HOME/.env\"; do \
+                 [ -f \"\$f\" ] && grep -E \"^\$name=\" \"\$f\" | head -1 | cut -d= -f2-; \
+               done | head -1" || true
+          }
+          token=$(fetch_env_var SETUP_TOKEN | head -1)
+          jar=$(mktemp)
+          if [ -n "$token" ]; then
+            echo '--- auth: SETUP_TOKEN bearer ---'
+            auth_args=(-H "Authorization: Bearer $token")
+          else
+            echo '--- auth: SETUP_TOKEN not found, falling back to admin session ---'
+            password=$(fetch_env_var ADMIN_PASSWORD | head -1)
+            if [ -z "$password" ]; then
+              echo "::error::Neither SETUP_TOKEN nor ADMIN_PASSWORD found in /proc environ or .env files on the box."
+              exit 1
+            fi
+            curl -fsS -o /dev/null -c "$jar" -X POST \
+              --data-urlencode "password=$password" "$PUBLIC_URL/api/admin/login"
+            if ! grep -q admin_session "$jar"; then
+              echo "::error::Admin login failed (no admin_session cookie) — ADMIN_PASSWORD on disk may not match the running app."
+              exit 1
+            fi
+            auth_args=(-b "$jar")
           fi
           echo '--- NOC-93 verification schema migration (idempotent) ---'
-          curl -fsS -X POST -H "Authorization: Bearer $token" \
-            "$PUBLIC_URL/api/setup/migrate-verification" | jq .
+          resp=$(curl -sS -X POST "${auth_args[@]}" "$PUBLIC_URL/api/setup/migrate-verification")
+          echo "$resp" | jq .
+          echo "$resp" | jq -e '.ok == true' > /dev/null
           echo '--- post-migration status check ---'
-          curl -fsS "$PUBLIC_URL/api/setup/migrate-verification" | jq .status
+          status=$(curl -fsS "$PUBLIC_URL/api/setup/migrate-verification")
+          echo "$status" | jq .status
+          echo "$status" | jq -e '.status.adminColumnsPresent and .status.infoSediInEnum and .status.usersTablePresent and .status.placeVisitsTablePresent' > /dev/null
           echo 'migration_complete'
 
       # rollback shares the deploy-ref step above (matched by `if:`).
